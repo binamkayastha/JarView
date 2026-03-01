@@ -1,0 +1,17 @@
+{
+  "name": "jarview",
+  "version": "1.0.0",
+  "description": "Jarview is a 3d photo organization visualization tool that helps you find and organize tasks.",
+  "main": "app.js",
+  "scripts": {
+    "dev": "vite",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "vite": "^7.3.1"
+  }
+}
