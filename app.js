@@ -27,6 +27,17 @@ const videoWidth = "480px";
 const MAX_HANDS = 2;
 const THUMB_TIP_INDEX = 4;
 const INDEX_TIP_INDEX = 8;
+let activeStream = null;
+
+const mirrorLandmarks = (landmarks) => {
+  if (!landmarks) {
+    return [];
+  }
+  return landmarks.map((landmark) => ({
+    ...landmark,
+    x: 1 - landmark.x
+  }));
+};
 
 const computeThumbIndexMetrics = (landmarks) => {
   if (!landmarks || !landmarks[THUMB_TIP_INDEX] || !landmarks[INDEX_TIP_INDEX]) {
@@ -78,7 +89,6 @@ const drawThumbIndexLabel = (metrics) => {
     return;
   }
 
-  const mirroredMidX = canvasElement.width - metrics.midPoint.x;
   const label = `Thumb-Index: ${metrics.distancePx.toFixed(1)} px`;
   const padding = 8;
   const backgroundHeight = 28;
@@ -89,14 +99,14 @@ const drawThumbIndexLabel = (metrics) => {
   const textMetrics = canvasCtx.measureText(label);
   const backgroundWidth = textMetrics.width + padding * 2;
   const textY = Math.max(backgroundHeight, metrics.midPoint.y);
-  const backgroundX = mirroredMidX - backgroundWidth / 2;
+  const backgroundX = metrics.midPoint.x - backgroundWidth / 2;
   const backgroundY = textY - backgroundHeight / 2;
 
   canvasCtx.fillStyle = "rgba(0, 0, 0, 0.6)";
   canvasCtx.fillRect(backgroundX, backgroundY, backgroundWidth, backgroundHeight);
 
   canvasCtx.fillStyle = "#FFD60A";
-  canvasCtx.fillText(label, mirroredMidX - textMetrics.width / 2, textY);
+  canvasCtx.fillText(label, metrics.midPoint.x - textMetrics.width / 2, textY);
   canvasCtx.restore();
 };
 
@@ -143,7 +153,7 @@ const createGestureRecognizer = async () => {
   });
   demosSection.classList.remove("invisible");
 };
-createGestureRecognizer();
+const gestureRecognizerReady = createGestureRecognizer();
 
 /********************************************************************
 // Demo 1: Detect hand gestures in images
@@ -235,6 +245,66 @@ const video = document.getElementById("webcam");
 const canvasElement = document.getElementById("output_canvas");
 const canvasCtx = canvasElement.getContext("2d");
 const gestureOutput = document.getElementById("gesture_output");
+const permissionNotice = document.getElementById("permissionNotice");
+const permissionMessage = document.getElementById("permissionMessage");
+const requestPermissionButton = document.getElementById(
+  "requestPermissionButton"
+);
+const PERMISSION_REQUIRED_MESSAGE =
+  "Camera permission is required for hand gesture recognition. Please allow access so predictions can start.";
+const PERMISSION_BLOCKED_MESSAGE =
+  "Camera permission is blocked. Allow camera access in your browser settings and click Re-request Camera.";
+
+if (requestPermissionButton) {
+  requestPermissionButton.addEventListener("click", () => {
+    if (!webcamRunning) {
+      requestCameraAccess({ fromPermissionButton: true });
+    }
+  });
+}
+
+function showPermissionNotice(
+  message = PERMISSION_REQUIRED_MESSAGE,
+  { showButton = true } = {}
+) {
+  if (permissionMessage && message) {
+    permissionMessage.innerText = message;
+  }
+  if (permissionNotice) {
+    permissionNotice.classList.remove("hidden");
+  }
+  if (showButton && requestPermissionButton) {
+    requestPermissionButton.classList.remove("hidden");
+  }
+}
+
+function hidePermissionNotice() {
+  if (permissionNotice) {
+    permissionNotice.classList.add("hidden");
+  }
+}
+
+async function initCameraPermissionStatus() {
+  if (!navigator.permissions || !navigator.permissions.query) {
+    return;
+  }
+  try {
+    const status = await navigator.permissions.query({ name: "camera" });
+    const updateNotice = () => {
+      if (status.state === "granted") {
+        hidePermissionNotice();
+      } else if (status.state === "denied") {
+        showPermissionNotice(PERMISSION_BLOCKED_MESSAGE);
+      } else {
+        showPermissionNotice(PERMISSION_REQUIRED_MESSAGE);
+      }
+    };
+    updateNotice();
+    status.addEventListener("change", updateNotice);
+  } catch (error) {
+    console.warn("Unable to query camera permission status:", error);
+  }
+}
 
 // Check if webcam access is supported.
 function hasGetUserMedia() {
@@ -246,35 +316,123 @@ function hasGetUserMedia() {
 if (hasGetUserMedia()) {
   enableWebcamButton = document.getElementById("webcamButton");
   enableWebcamButton.addEventListener("click", enableCam);
+  initCameraPermissionStatus();
+  gestureRecognizerReady.then(() => {
+    if (!webcamRunning) {
+      enableCam();
+    }
+  });
 } else {
   console.warn("getUserMedia() is not supported by your browser");
+  showPermissionNotice(
+    "This browser does not support camera access required for gesture recognition."
+  );
+  if (requestPermissionButton) {
+    requestPermissionButton.classList.add("hidden");
+  }
 }
 
 // Enable the live webcam view and start detection.
-function enableCam(event) {
+function enableCam() {
   if (!gestureRecognizer) {
     alert("Please wait for gestureRecognizer to load");
     return;
   }
 
   if (webcamRunning === true) {
-    webcamRunning = false;
-    enableWebcamButton.innerText = "ENABLE PREDICTIONS";
-  } else {
-    webcamRunning = true;
-    enableWebcamButton.innerText = "DISABLE PREDICTIONS";
+    stopWebcamStream();
+    return;
   }
 
-  // getUsermedia parameters.
+  requestCameraAccess();
+}
+
+function stopWebcamStream() {
+  if (activeStream) {
+    activeStream.getTracks().forEach((track) => track.stop());
+  }
+  video.srcObject = null;
+  activeStream = null;
+  webcamRunning = false;
+  if (enableWebcamButton) {
+    enableWebcamButton.innerText = "ENABLE PREDICTIONS";
+  }
+  if (gestureOutput) {
+    gestureOutput.style.display = "none";
+  }
+}
+
+function requestCameraAccess(options = {}) {
+  const { fromPermissionButton = false } = options;
+
+  if (!gestureRecognizer) {
+    alert("Please wait for gestureRecognizer to load");
+    return;
+  }
+
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    showPermissionNotice(
+      "Camera access is unavailable in this browser. Please switch to a supported browser to continue."
+    );
+    return;
+  }
+
+  if (fromPermissionButton && requestPermissionButton) {
+    requestPermissionButton.disabled = true;
+    requestPermissionButton.innerText = "REQUESTING...";
+  }
+
+  if (enableWebcamButton) {
+    enableWebcamButton.disabled = true;
+  }
+
   const constraints = {
     video: true
   };
 
-  // Activate the webcam stream.
-  navigator.mediaDevices.getUserMedia(constraints).then(function (stream) {
-    video.srcObject = stream;
-    video.addEventListener("loadeddata", predictWebcam);
-  });
+  navigator.mediaDevices
+    .getUserMedia(constraints)
+    .then((stream) => {
+      activeStream = stream;
+      video.srcObject = stream;
+      video.removeEventListener("loadeddata", predictWebcam);
+      video.addEventListener("loadeddata", predictWebcam);
+      webcamRunning = true;
+      if (enableWebcamButton) {
+        enableWebcamButton.innerText = "DISABLE PREDICTIONS";
+      }
+      if (requestPermissionButton) {
+        requestPermissionButton.innerText = "RE-REQUEST CAMERA";
+      }
+      hidePermissionNotice();
+    })
+    .catch((error) => {
+      activeStream = null;
+      webcamRunning = false;
+      if (enableWebcamButton) {
+        enableWebcamButton.innerText = "ENABLE PREDICTIONS";
+      }
+      if (requestPermissionButton) {
+        requestPermissionButton.innerText = "RE-REQUEST CAMERA";
+      }
+      const blocked =
+        error.name === "NotAllowedError" ||
+        error.name === "SecurityError" ||
+        error.name === "PermissionDeniedError";
+      const message = blocked
+        ? PERMISSION_BLOCKED_MESSAGE
+        : "Unable to access the camera. Make sure no other app is using it and try again.";
+      showPermissionNotice(message, { showButton: blocked });
+      console.error("Error accessing camera:", error);
+    })
+    .finally(() => {
+      if (enableWebcamButton) {
+        enableWebcamButton.disabled = false;
+      }
+      if (fromPermissionButton && requestPermissionButton) {
+        requestPermissionButton.disabled = false;
+      }
+    });
 }
 
 let lastVideoTime = -1;
@@ -305,23 +463,22 @@ async function predictWebcam() {
   webcamElement.style.width = videoWidth;
 
   if (results.landmarks) {
-    canvasCtx.translate(canvasElement.width, 0);
-    canvasCtx.scale(-1, 1);
     const drawingUtils = new DrawingUtils(canvasCtx);
     for (const landmarks of results.landmarks) {
+      const mirroredLandmarks = mirrorLandmarks(landmarks);
       drawingUtils.drawConnectors(
-        landmarks,
+        mirroredLandmarks,
         GestureRecognizer.HAND_CONNECTIONS,
         {
           color: "#00FF00",
           lineWidth: 5
         }
       );
-      drawingUtils.drawLandmarks(landmarks, {
+      drawingUtils.drawLandmarks(mirroredLandmarks, {
         color: "#FF0000",
         lineWidth: 2
       });
-      const metrics = computeThumbIndexMetrics(landmarks);
+      const metrics = computeThumbIndexMetrics(mirroredLandmarks);
       if (metrics) {
         drawThumbIndexLine(metrics);
         thumbIndexMetrics.push(metrics);

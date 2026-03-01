@@ -24,6 +24,22 @@ limitations under the License. -->
 </head>
 
 <body>
+  <div id="permissionNotice" class="permission-notice hidden" role="alertdialog" aria-modal="true"
+    aria-labelledby="permissionTitle">
+    <div class="permission-notice__card">
+      <h3 id="permissionTitle">Camera permission required</h3>
+      <p id="permissionMessage">
+        Camera permission is required for hand gesture recognition. Please allow access so predictions can start.
+      </p>
+      <div class="permission-notice__actions">
+        <button id="requestPermissionButton" class="mdc-button mdc-button--raised">
+          <span class="mdc-button__ripple"></span>
+          <span class="mdc-button__label">GRANT CAMERA ACCESS</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
   <h1>Recognize hand gestures using the MediaPipe HandGestureRecognizer task</h1>
 
   <section id="demos" class="invisible">

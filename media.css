@@ -32,10 +32,10 @@ h2 {
 video {
   clear: both;
   display: block;
+  height: 280px;
   transform: rotateY(180deg);
   -webkit-transform: rotateY(180deg);
   -moz-transform: rotateY(180deg);
-  height: 280px;
 }
 
 section {
@@ -89,6 +89,47 @@ section {
   z-index: 1;
   position: absolute;
   pointer-events: none;
+}
+.output_canvas {
+  transform: none;
+}
+
+.permission-notice {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(0, 0, 0, 0.45);
+  z-index: 1000;
+  padding: 16px;
+}
+
+.permission-notice__card {
+  max-width: 420px;
+  width: 100%;
+  background: #ffffff;
+  border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.25);
+  padding: 24px;
+  text-align: left;
+  line-height: 1.4;
+}
+
+.permission-notice__card h3 {
+  margin-top: 0;
+  margin-bottom: 8px;
+  color: #004d57;
+}
+
+.permission-notice__actions {
+  margin-top: 16px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.hidden {
+  display: none !important;
 }
 
 .detectOnClick {
