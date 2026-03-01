@@ -32,6 +32,7 @@ const DISPLAY_PHOTO_COUNT = 12;
 const MAX_HANDS = 2;
 const THUMB_TIP_INDEX = 4;
 const INDEX_TIP_INDEX = 8;
+const PINCH_DISTANCE_THRESHOLD_PX = 100;
 let activeStream = null;
 
 let currentPhotoSources = [];
@@ -288,13 +289,16 @@ const computeThumbIndexMetrics = (landmarks) => {
   };
 };
 
-const drawThumbIndexLine = (metrics) => {
+const isThumbIndexPinched = (metrics) =>
+  metrics?.distancePx <= PINCH_DISTANCE_THRESHOLD_PX;
+
+const drawThumbIndexLine = (metrics, { highlight = false } = {}) => {
   if (!metrics) {
     return;
   }
 
   canvasCtx.save();
-  canvasCtx.strokeStyle = "#FFD60A";
+  canvasCtx.strokeStyle = highlight ? "#0A84FF" : "#FFD60A";
   canvasCtx.lineWidth = 4;
   canvasCtx.beginPath();
   canvasCtx.moveTo(metrics.start.x, metrics.start.y);
@@ -308,7 +312,13 @@ const drawThumbIndexLabel = (metrics) => {
     return;
   }
 
-  const label = `Thumb-Index: ${metrics.distancePx.toFixed(1)} px`;
+  const handednessLabel = metrics.handedness
+    ? `${metrics.handedness} Thumb-Index`
+    : "Thumb-Index";
+  const pinchSuffix = metrics.isPinched ? " (pinched)" : "";
+  const label = `${handednessLabel}: ${metrics.distancePx.toFixed(
+    1
+  )} px${pinchSuffix}`;
   const padding = 8;
   const backgroundHeight = 28;
 
@@ -326,6 +336,52 @@ const drawThumbIndexLabel = (metrics) => {
 
   canvasCtx.fillStyle = "#FFD60A";
   canvasCtx.fillText(label, metrics.midPoint.x - textMetrics.width / 2, textY);
+  canvasCtx.restore();
+};
+
+const drawPinchedHandsConnector = (firstPinch, secondPinch) => {
+  if (!firstPinch || !secondPinch) {
+    return;
+  }
+  canvasCtx.save();
+  canvasCtx.strokeStyle = "#34C759";
+  canvasCtx.lineWidth = 6;
+  canvasCtx.setLineDash([12, 10]);
+  canvasCtx.beginPath();
+  canvasCtx.moveTo(firstPinch.midPoint.x, firstPinch.midPoint.y);
+  canvasCtx.lineTo(secondPinch.midPoint.x, secondPinch.midPoint.y);
+  canvasCtx.stroke();
+  canvasCtx.restore();
+};
+
+const drawPinchedHandsDistanceLabel = (
+  firstPinch,
+  secondPinch,
+  distancePx
+) => {
+  if (!firstPinch || !secondPinch || typeof distancePx !== "number") {
+    return;
+  }
+  const midPoint = {
+    x: (firstPinch.midPoint.x + secondPinch.midPoint.x) / 2,
+    y: (firstPinch.midPoint.y + secondPinch.midPoint.y) / 2
+  };
+  const label = `Hands Gap: ${distancePx.toFixed(1)} px`;
+  const padding = 10;
+  const backgroundHeight = 32;
+
+  canvasCtx.save();
+  canvasCtx.font = "22px sans-serif";
+  canvasCtx.textBaseline = "middle";
+  const textMetrics = canvasCtx.measureText(label);
+  const backgroundWidth = textMetrics.width + padding * 2;
+  const backgroundX = midPoint.x - backgroundWidth / 2;
+  const backgroundY = midPoint.y - backgroundHeight / 2;
+
+  canvasCtx.fillStyle = "rgba(0, 0, 0, 0.7)";
+  canvasCtx.fillRect(backgroundX, backgroundY, backgroundWidth, backgroundHeight);
+  canvasCtx.fillStyle = "#34C759";
+  canvasCtx.fillText(label, midPoint.x - textMetrics.width / 2, midPoint.y);
   canvasCtx.restore();
 };
 
@@ -676,6 +732,8 @@ async function predictWebcam() {
   canvasCtx.setTransform(1, 0, 0, 1, 0, 0);
   canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
   const thumbIndexMetrics = [];
+  const pinchedMetrics = [];
+  let pinchedHandsDistance = null;
   canvasElement.style.height = videoHeight;
   webcamElement.style.height = videoHeight;
   canvasElement.style.width = videoWidth;
@@ -683,7 +741,7 @@ async function predictWebcam() {
 
   if (results.landmarks) {
     const drawingUtils = new DrawingUtils(canvasCtx);
-    for (const landmarks of results.landmarks) {
+    results.landmarks.forEach((landmarks, index) => {
       const mirroredLandmarks = mirrorLandmarks(landmarks);
       drawingUtils.drawConnectors(
         mirroredLandmarks,
@@ -699,20 +757,44 @@ async function predictWebcam() {
       });
       const metrics = computeThumbIndexMetrics(mirroredLandmarks);
       if (metrics) {
-        drawThumbIndexLine(metrics);
-        thumbIndexMetrics.push(metrics);
+        const handedness =
+          results.handednesses?.[index]?.[0]?.displayName || "Unknown";
+        const metricDetails = {
+          ...metrics,
+          handedness: flipHandedness(handedness)
+        };
+        const pinched = isThumbIndexPinched(metricDetails);
+        metricDetails.isPinched = pinched;
+        drawThumbIndexLine(metricDetails, { highlight: pinched });
+        if (pinched) {
+          pinchedMetrics.push(metricDetails);
+        }
+        thumbIndexMetrics.push(metricDetails);
       }
-    }
+    });
   }
   canvasCtx.restore();
+  if (pinchedMetrics.length === 2) {
+    const [firstPinch, secondPinch] = pinchedMetrics;
+    drawPinchedHandsConnector(firstPinch, secondPinch);
+    pinchedHandsDistance = Math.hypot(
+      secondPinch.midPoint.x - firstPinch.midPoint.x,
+      secondPinch.midPoint.y - firstPinch.midPoint.y
+    );
+    drawPinchedHandsDistanceLabel(firstPinch, secondPinch, pinchedHandsDistance);
+  }
   thumbIndexMetrics.forEach((metrics) => {
     drawThumbIndexLabel(metrics);
   });
   const summaries = buildGestureSummaries(results);
-  if (summaries.length > 0) {
+  const infoLines = [...summaries];
+  if (pinchedHandsDistance !== null) {
+    infoLines.push(`Hands Gap: ${pinchedHandsDistance.toFixed(1)} px`);
+  }
+  if (infoLines.length > 0) {
     gestureOutput.style.display = "block";
     gestureOutput.style.width = videoWidth;
-    gestureOutput.innerText = summaries.join("\n\n");
+    gestureOutput.innerText = infoLines.join("\n\n");
   } else {
     gestureOutput.style.display = "none";
   }
