@@ -42,6 +42,27 @@ limitations under the License. -->
 
   <h1>Recognize hand gestures using the MediaPipe HandGestureRecognizer task</h1>
 
+  <section id="library-preview" class="photo-library">
+    <div class="section-header">
+      <div>
+        <h2>Apple Photos Library Preview</h2>
+        <p>Grant read-only access to your Photos Library package to explore every photo directly from disk.</p>
+      </div>
+      <div class="library-actions">
+        <button id="selectLibrary" class="mdc-button mdc-button--raised">
+          <span class="mdc-button__ripple"></span>
+          <span class="mdc-button__label">Give access to Photos Library</span>
+        </button>
+        <button id="refreshPhotos" class="mdc-button mdc-button--outlined">
+          <span class="mdc-button__ripple"></span>
+          <span class="mdc-button__label">Shuffle photos</span>
+        </button>
+      </div>
+    </div>
+    <p id="libraryStatus" class="library-status" role="status"></p>
+    <div id="photoGrid" class="photo-grid" aria-live="polite"></div>
+  </section>
+
   <section id="demos" class="invisible">
     <h2><br>Demo: Webcam continuous hand gesture detection</h2>
     <p>Use your hand to make gestures in front of the camera to get gesture classification. </br>Click <b>enable webcam</b>

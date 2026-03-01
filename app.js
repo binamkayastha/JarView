@@ -18,16 +18,235 @@ import {
 } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3";
 
 const demosSection = document.getElementById("demos");
+const photoGrid = document.getElementById("photoGrid");
+const refreshPhotosButton = document.getElementById("refreshPhotos");
+const selectLibraryButton = document.getElementById("selectLibrary");
+const libraryStatus = document.getElementById("libraryStatus");
 let gestureRecognizer;
 let runningMode = "IMAGE";
 let enableWebcamButton;
 let webcamRunning = false;
 const videoHeight = "360px";
 const videoWidth = "480px";
+const DISPLAY_PHOTO_COUNT = 12;
 const MAX_HANDS = 2;
 const THUMB_TIP_INDEX = 4;
 const INDEX_TIP_INDEX = 8;
 let activeStream = null;
+
+let currentPhotoSources = [];
+let activeObjectUrls = [];
+
+const shuffle = (array) => {
+  const clone = [...array];
+  for (let i = clone.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [clone[i], clone[j]] = [clone[j], clone[i]];
+  }
+  return clone;
+};
+
+const renderPhotoGrid = () => {
+  if (!photoGrid) return;
+  photoGrid.innerHTML = "";
+  if (!currentPhotoSources.length) {
+    photoGrid.innerHTML =
+      "<p class='photo-placeholder'>No photos loaded yet. Select your Photos Library to begin.</p>";
+    return;
+  }
+  const photosToShow = currentPhotoSources.slice(0, DISPLAY_PHOTO_COUNT);
+  photosToShow.forEach((photo, idx) => {
+    const figure = document.createElement("figure");
+    figure.className = "photo-card";
+    figure.innerHTML = `
+      <img src="${photo.src}" alt="${photo.caption}" loading="lazy">
+      <figcaption>${photo.caption} • #${idx + 1}</figcaption>
+    `;
+    photoGrid.appendChild(figure);
+  });
+};
+
+const clearActiveObjectUrls = () => {
+  activeObjectUrls.forEach((url) => URL.revokeObjectURL(url));
+  activeObjectUrls = [];
+};
+
+const setPhotoSources = (photos = [], { objectUrls = [] } = {}) => {
+  clearActiveObjectUrls();
+  if (objectUrls.length) {
+    activeObjectUrls = objectUrls;
+  }
+  currentPhotoSources = Array.isArray(photos) ? [...photos] : [];
+  renderPhotoGrid();
+  if (refreshPhotosButton) {
+    refreshPhotosButton.disabled = currentPhotoSources.length === 0;
+  }
+};
+
+const refreshPhotoGrid = () => {
+  if (!currentPhotoSources.length) {
+    updateLibraryStatus("Load your Photos Library first to enable shuffling.");
+    return;
+  }
+  currentPhotoSources = shuffle(currentPhotoSources);
+  renderPhotoGrid();
+};
+
+const updateLibraryStatus = (message, { isError = false } = {}) => {
+  if (!libraryStatus) return;
+  libraryStatus.innerText = message;
+  libraryStatus.classList.toggle("library-status--error", isError);
+};
+
+if (photoGrid) {
+  renderPhotoGrid();
+  refreshPhotosButton?.addEventListener("click", refreshPhotoGrid);
+}
+
+updateLibraryStatus(
+  "Select your Photos Library folder (e.g., ~/Pictures) to load thumbnails."
+);
+
+const IMAGE_EXTENSIONS = [".jpg", ".jpeg", ".png", ".heic", ".heif"];
+const MAX_DYNAMIC_PHOTOS = 60;
+const MAX_DIRECTORY_SEARCH_DEPTH = 5;
+
+const isImageFile = (filename = "") =>
+  IMAGE_EXTENSIONS.some((ext) => filename.toLowerCase().endsWith(ext));
+
+const tryResolveDerivatives = async (directoryHandle) => {
+  if (!directoryHandle) return null;
+  const lowerName = directoryHandle.name.toLowerCase();
+  if (lowerName.includes("derivatives")) {
+    return directoryHandle;
+  }
+  try {
+    const direct = await directoryHandle.getDirectoryHandle("derivatives");
+    return direct;
+  } catch (error) {
+    // continue searching
+  }
+  try {
+    const resources = await directoryHandle.getDirectoryHandle("resources");
+    return await resources.getDirectoryHandle("derivatives");
+  } catch (error) {
+    return null;
+  }
+};
+
+const resolveDerivativesHandle = async (rootHandle) => {
+  if (!rootHandle) {
+    throw new Error("No directory selected.");
+  }
+  const initial = await tryResolveDerivatives(rootHandle);
+  if (initial) return initial;
+
+  const walk = async (directoryHandle, depth = 0) => {
+    if (depth > MAX_DIRECTORY_SEARCH_DEPTH) {
+      return null;
+    }
+    for await (const entry of directoryHandle.values()) {
+      if (entry.kind !== "directory") continue;
+      const candidate = await tryResolveDerivatives(entry);
+      if (candidate) {
+        return candidate;
+      }
+      const nested = await walk(entry, depth + 1);
+      if (nested) return nested;
+    }
+    return null;
+  };
+
+  const discovered = await walk(rootHandle);
+  if (discovered) {
+    return discovered;
+  }
+  throw new Error(
+    "Could not locate a Photos Library resources/derivatives folder inside that selection."
+  );
+};
+
+const collectPhotosFromHandle = async (
+  dirHandle,
+  limit = MAX_DYNAMIC_PHOTOS
+) => {
+  const photos = [];
+  const objectUrls = [];
+
+  const walkDirectory = async (directoryHandle) => {
+    for await (const entry of directoryHandle.values()) {
+      if (photos.length >= limit) break;
+      if (entry.kind === "file" && isImageFile(entry.name)) {
+        const file = await entry.getFile();
+        const url = URL.createObjectURL(file);
+        photos.push({
+          src: url,
+          caption: file.name
+        });
+        objectUrls.push(url);
+      } else if (entry.kind === "directory") {
+        await walkDirectory(entry);
+      }
+    }
+  };
+
+  await walkDirectory(dirHandle);
+  return { photos, objectUrls };
+};
+
+const requestPhotosLibraryAccess = async () => {
+  if (!window.showDirectoryPicker) {
+    updateLibraryStatus(
+      "Your browser does not support folder access. Try Chrome or Edge.",
+      { isError: true }
+    );
+    return;
+  }
+  try {
+    updateLibraryStatus(
+      "Choose your Photos Library package to grant read-only access..."
+    );
+    const rootHandle = await window.showDirectoryPicker({ mode: "read" });
+    const derivativesHandle = await resolveDerivativesHandle(rootHandle);
+    updateLibraryStatus("Loading photos from library...");
+    const { photos, objectUrls } = await collectPhotosFromHandle(
+      derivativesHandle
+    );
+    if (!photos.length) {
+      updateLibraryStatus(
+        "No images were found in the selected folder. Please try another directory.",
+        { isError: true }
+      );
+      return;
+    }
+    setPhotoSources(photos, { objectUrls });
+    updateLibraryStatus(
+      `Showing ${Math.min(
+        photos.length,
+        SAMPLE_PHOTO_COUNT
+      )} of ${photos.length} photos (shuffle for more).`
+    );
+  } catch (error) {
+    if (error?.name === "AbortError") {
+      updateLibraryStatus("Folder selection was cancelled.");
+      return;
+    }
+    console.error("Unable to access Photos Library:", error);
+    updateLibraryStatus(
+      "Unable to access that folder. Ensure it is your Photos Library and retry.",
+      { isError: true }
+    );
+  }
+};
+
+selectLibraryButton?.addEventListener("click", requestPhotosLibraryAccess);
+if (!window.showDirectoryPicker && selectLibraryButton) {
+  selectLibraryButton.disabled = true;
+  updateLibraryStatus(
+    "Folder access requires a Chromium-based browser (Chrome, Edge, Arc, etc.).",
+    { isError: true }
+  );
+}
 
 const mirrorLandmarks = (landmarks) => {
   if (!landmarks) {
