@@ -649,6 +649,126 @@ window.addEventListener("resize", () => {
 const IMAGE_EXTENSIONS = [".jpg", ".jpeg", ".png", ".heic", ".heif"];
 const MAX_DYNAMIC_PHOTOS = 60;
 const MAX_DIRECTORY_SEARCH_DEPTH = 5;
+const MAX_PREVIEW_DIMENSION = 720;
+const PREVIEW_EXPORT_TYPE = "image/jpeg";
+const PREVIEW_EXPORT_QUALITY = 0.82;
+
+const canvasToBlob = (canvas, { type = PREVIEW_EXPORT_TYPE, quality = PREVIEW_EXPORT_QUALITY } = {}) => {
+  if (!canvas) {
+    return Promise.reject(new Error("Canvas not available for thumbnail rendering."));
+  }
+  if (typeof canvas.convertToBlob === "function") {
+    return canvas.convertToBlob({ type, quality });
+  }
+  if (typeof canvas.toBlob !== "function") {
+    return Promise.reject(new Error("Canvas blob export is unsupported."));
+  }
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (blob) {
+        resolve(blob);
+      } else {
+        reject(new Error("Failed to convert canvas to blob."));
+      }
+    }, type, quality);
+  });
+};
+
+const decodeImageSource = async (file) => {
+  if (!file) {
+    throw new Error("No file supplied for decoding.");
+  }
+  if (typeof createImageBitmap === "function") {
+    const bitmap = await createImageBitmap(file);
+    return {
+      image: bitmap,
+      width: bitmap.width,
+      height: bitmap.height,
+      cleanup: () => bitmap.close && bitmap.close()
+    };
+  }
+  if (typeof Image === "undefined") {
+    throw new Error("Browser cannot decode images in this environment.");
+  }
+  return new Promise((resolve, reject) => {
+    const tempUrl = URL.createObjectURL(file);
+    const image = new Image();
+    image.decoding = "async";
+    image.onload = () => {
+      const width = image.naturalWidth || image.width;
+      const height = image.naturalHeight || image.height;
+      URL.revokeObjectURL(tempUrl);
+      resolve({
+        image,
+        width,
+        height,
+        cleanup: () => {
+          image.src = "";
+        }
+      });
+    };
+    image.onerror = (error) => {
+      URL.revokeObjectURL(tempUrl);
+      reject(error || new Error("Unable to decode image."));
+    };
+    image.src = tempUrl;
+  });
+};
+
+const createPreviewUrlFromFile = async (file) => {
+  if (!file) {
+    return { src: null, urls: [] };
+  }
+  if (typeof document === "undefined" && typeof OffscreenCanvas === "undefined") {
+    const fallbackUrl = URL.createObjectURL(file);
+    return { src: fallbackUrl, urls: [fallbackUrl] };
+  }
+  try {
+    const decoded = await decodeImageSource(file);
+    const maxSide = Math.max(decoded.width || 0, decoded.height || 0);
+    if (!maxSide || maxSide <= MAX_PREVIEW_DIMENSION) {
+      const passthroughUrl = URL.createObjectURL(file);
+      decoded.cleanup?.();
+      return { src: passthroughUrl, urls: [passthroughUrl] };
+    }
+    const scale = MAX_PREVIEW_DIMENSION / maxSide;
+    const width = Math.round((decoded.width || 0) * scale) || MAX_PREVIEW_DIMENSION;
+    const height = Math.round((decoded.height || 0) * scale) || MAX_PREVIEW_DIMENSION;
+    let canvas = null;
+    if (typeof OffscreenCanvas !== "undefined") {
+      canvas = new OffscreenCanvas(width, height);
+    } else if (typeof document !== "undefined") {
+      canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+    }
+    if (!canvas) {
+      decoded.cleanup?.();
+      const fallbackUrl = URL.createObjectURL(file);
+      return { src: fallbackUrl, urls: [fallbackUrl] };
+    }
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      decoded.cleanup?.();
+      const fallbackUrl = URL.createObjectURL(file);
+      return { src: fallbackUrl, urls: [fallbackUrl] };
+    }
+    ctx.clearRect(0, 0, width, height);
+    ctx.drawImage(decoded.image, 0, 0, width, height);
+    decoded.cleanup?.();
+    const blob = await canvasToBlob(canvas);
+    const previewUrl = URL.createObjectURL(blob);
+    if (!(canvas instanceof OffscreenCanvas)) {
+      canvas.width = 0;
+      canvas.height = 0;
+    }
+    return { src: previewUrl, urls: [previewUrl] };
+  } catch (error) {
+    console.warn("Falling back to original resolution for preview", error);
+    const fallbackUrl = URL.createObjectURL(file);
+    return { src: fallbackUrl, urls: [fallbackUrl] };
+  }
+};
 
 const isImageFile = (filename = "") =>
   IMAGE_EXTENSIONS.some((ext) => filename.toLowerCase().endsWith(ext));
@@ -717,15 +837,17 @@ const collectPhotosFromHandle = async (
       if (photos.length >= limit) break;
       if (entry.kind === "file" && isImageFile(entry.name)) {
         const file = await entry.getFile();
-        const url = URL.createObjectURL(file);
+        const { src, urls } = await createPreviewUrlFromFile(file);
         const takenOn = file.lastModified ? new Date(file.lastModified) : null;
         photos.push({
-          src: url,
+          src,
           caption: file.name,
           takenOn,
           lastModified: file.lastModified
         });
-        objectUrls.push(url);
+        if (urls?.length) {
+          objectUrls.push(...urls);
+        }
       } else if (entry.kind === "directory") {
         await walkDirectory(entry);
       }
