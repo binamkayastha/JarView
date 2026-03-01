@@ -27,6 +27,7 @@ const timelineLabel = document.getElementById("dateSliderLabel");
 const timelineStatus = document.getElementById("canvasStatus");
 const selectedDateHeading = document.getElementById("selectedDateHeading");
 const selectedDateList = document.getElementById("datePhotoList");
+const selectedDatePanel = document.querySelector(".selected-date-panel");
 const orbitDial = document.getElementById("orbitDial");
 const orbitDialValue = document.getElementById("orbitDialValue");
 const glowDial = document.getElementById("glowDial");
@@ -1055,26 +1056,42 @@ const updateInteractivity = (metrics) => {
     return;
   }
 
-  // On the left hand update the score of the first slider
-  // Score usually is between 50 - 300 for min/max so we're just hardcoding it
-  if (metrics.handedness == "Left") {
-    const distancePercentage = Math.min(metrics.distancePx, 300) / 300;
-    const newVal = Math.floor(timelineSlider.max * distancePercentage);
-    // Not sure if this is the best way to do it
-    activeTimelineIndex = newVal;
-    timelineSlider.value = newVal;
-    updateSelectedDatePanel();
-    scheduleTimelineRender();
+  if (
+    metrics.handedness === "Left" &&
+    timelineSlider &&
+    !timelineSlider.disabled
+  ) {
+    const sliderMax = Number(timelineSlider.max);
+    if (Number.isFinite(sliderMax) && sliderMax >= 0) {
+      const distancePercentage = Math.min(metrics.distancePx, 300) / 300;
+      const nextIndex = Math.min(
+        sliderMax,
+        Math.max(0, Math.round(sliderMax * distancePercentage)),
+      );
+      if (nextIndex !== activeTimelineIndex) {
+        activeTimelineIndex = nextIndex;
+        if (timelineSlider.value !== String(nextIndex)) {
+          timelineSlider.value = String(nextIndex);
+        }
+        updateSelectedDatePanel();
+        scheduleTimelineRender();
+      }
+    }
   }
 
-  if (metrics.handedness == "Right") {
-    const photoPanel = document.querySelector(".selected-date-panel");
+  if (metrics.handedness === "Right") {
+    if (!selectedDatePanel) {
+      return;
+    }
     const distancePercentage = Math.min(metrics.distancePx, 300) / 300;
-    // The client height is the hieght of the view, so we don't want to set the max
-    // past that otherwise we'll get some empty space
-    const scrollableAmount = photoPanel.scrollHeight - photoPanel.clientHeight;
+    const scrollableAmount = Math.max(
+      0,
+      selectedDatePanel.scrollHeight - selectedDatePanel.clientHeight,
+    );
     const targetScrollTop = scrollableAmount * distancePercentage;
-    photoPanel.scrollTop = targetScrollTop;
+    if (Math.abs(selectedDatePanel.scrollTop - targetScrollTop) > 1) {
+      selectedDatePanel.scrollTop = targetScrollTop;
+    }
   }
 };
 
@@ -1149,13 +1166,6 @@ const buildGestureSummaries = (recognizerResults) => {
     })
     .filter(Boolean);
 };
-
-function sleep(ms) {
-  var start = new Date().getTime(),
-    expire = start + ms;
-  while (new Date().getTime() < expire) {}
-  return;
-}
 
 // Before we can use HandLandmarker class we must wait for it to finish
 // loading. Machine Learning models can be large and take a moment to
