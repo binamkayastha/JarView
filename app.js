@@ -52,6 +52,7 @@ const MAX_HANDS = 2;
 const THUMB_TIP_INDEX = 4;
 const INDEX_TIP_INDEX = 8;
 const PINCH_DISTANCE_THRESHOLD_PX = 100;
+const DEFAULT_ROUNDING_STEP = 5;
 let activeStream = null;
 
 let currentPhotoSources = [];
@@ -76,6 +77,25 @@ const starField = Array.from({ length: STAR_COUNT }, () => ({
 
 let cameraPermissionState = "pending";
 let photosPermissionState = "pending";
+
+const roundToNearestStep = (value, step = DEFAULT_ROUNDING_STEP) => {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return null;
+  }
+  const safeStep = Number.isFinite(step) && step !== 0 ? step : 1;
+  return Math.round(value / safeStep) * safeStep;
+};
+
+const formatMetricValue = (
+  value,
+  { suffix = "", fallback = "--", step = DEFAULT_ROUNDING_STEP } = {},
+) => {
+  const rounded = roundToNearestStep(value, step);
+  if (typeof rounded !== "number") {
+    return fallback;
+  }
+  return `${rounded}${suffix}`;
+};
 
 const STATUS_LABELS = {
   pending: "Permission needed",
@@ -962,6 +982,55 @@ const mirrorLandmarks = (landmarks) => {
   }));
 };
 
+const computePalmOrientationInfo = (landmarks) => {
+  if (!landmarks) {
+    return null;
+  }
+  const wrist = landmarks[0];
+  const indexMcp = landmarks[5];
+  const middleMcp = landmarks[9];
+  const pinkyMcp = landmarks[17];
+  if (!wrist || !indexMcp || !middleMcp || !pinkyMcp) {
+    return null;
+  }
+
+  const subtract = (pointA, pointB) => ({
+    x: (pointA?.x ?? 0) - (pointB?.x ?? 0),
+    y: (pointA?.y ?? 0) - (pointB?.y ?? 0),
+    z: (pointA?.z ?? 0) - (pointB?.z ?? 0),
+  });
+  const cross = (vectorA, vectorB) => ({
+    x: vectorA.y * vectorB.z - vectorA.z * vectorB.y,
+    y: vectorA.z * vectorB.x - vectorA.x * vectorB.z,
+    z: vectorA.x * vectorB.y - vectorA.y * vectorB.x,
+  });
+  const normalize = (vector) => {
+    const magnitude = Math.hypot(vector.x, vector.y, vector.z);
+    if (!magnitude) {
+      return null;
+    }
+    return {
+      x: vector.x / magnitude,
+      y: vector.y / magnitude,
+      z: vector.z / magnitude,
+    };
+  };
+  const normal = normalize(cross(subtract(indexMcp, wrist), subtract(pinkyMcp, wrist)));
+  const forward = normalize(subtract(middleMcp, wrist));
+  if (!normal || !forward) {
+    return null;
+  }
+  const toDegrees = (radians) => (radians * 180) / Math.PI;
+  const pitch = toDegrees(Math.atan2(normal.y, normal.z));
+  const yaw = toDegrees(Math.atan2(normal.x, normal.z));
+  const roll = toDegrees(Math.atan2(forward.y, forward.x));
+  return {
+    pitch: Number.isFinite(pitch) ? pitch : 0,
+    yaw: Number.isFinite(yaw) ? yaw : 0,
+    roll: Number.isFinite(roll) ? roll : 0,
+  };
+};
+
 const computeThumbIndexMetrics = (landmarks) => {
   if (
     !landmarks ||
@@ -1140,6 +1209,99 @@ const drawPinchedHandsDistanceLabel = (firstPinch, secondPinch, distancePx) => {
   canvasCtx.fillStyle = "#34C759";
   canvasCtx.fillText(label, midPoint.x - textMetrics.width / 2, midPoint.y);
   canvasCtx.restore();
+};
+
+const renderGestureInsights = ({
+  handTelemetry,
+  pinchDistance,
+} = {}) => {
+  if (!gestureOutput) {
+    return;
+  }
+  if (!Array.isArray(handTelemetry)) {
+    gestureOutput.hidden = true;
+    gestureOutput.innerHTML = "";
+    return;
+  }
+  if (handTelemetry.length === 0) {
+    gestureOutput.hidden = false;
+    gestureOutput.innerHTML =
+      '<div class="gesture-empty" role="status">Keep your hands in view to see live Gesture Insights.</div>';
+    return;
+  }
+
+  const cardsMarkup = handTelemetry
+    .map((hand) => {
+      const pinchState = hand.isPinched ? "pinched" : "open";
+      const pinchLabel = hand.isPinched ? "Pinched" : "Open";
+      const pinchDistanceValue = formatMetricValue(hand.pinchDistance, {
+        suffix: " px",
+      });
+      const orientation = hand.orientation || {};
+      const pitchValue = formatMetricValue(orientation.pitch, {
+        suffix: " deg",
+      });
+      const yawValue = formatMetricValue(orientation.yaw, {
+        suffix: " deg",
+      });
+      const rollValue = formatMetricValue(orientation.roll, {
+        suffix: " deg",
+      });
+      const gestureLabel = hand.gesture?.label || "No gesture detected";
+      const confidenceValue = formatMetricValue(
+        hand.gesture?.confidence,
+        { suffix: "%" },
+      );
+      const metricsMarkup = [
+        { label: "Thumb-Index", value: pinchDistanceValue },
+        { label: "Pitch", value: pitchValue },
+        { label: "Yaw", value: yawValue },
+        { label: "Roll", value: rollValue },
+      ]
+        .map(
+          (metric) => `<div class="metric">
+            <span class="metric-label">${metric.label}</span>
+            <span class="metric-value">${metric.value}</span>
+          </div>`,
+        )
+        .join("");
+      const handednessLabel = hand.handedness || "Hand";
+      const handednessData = handednessLabel
+        ? handednessLabel.toLowerCase().replace(/\s+/g, "-")
+        : "hand";
+      return `<article class="hand-card" data-handedness="${handednessData}">
+        <div class="hand-card__header">
+          <div class="hand-card__titles">
+            <p class="hand-card__label">${handednessLabel}</p>
+            <p class="hand-card__gesture">${gestureLabel}</p>
+          </div>
+          <span class="pinch-badge" data-state="${pinchState}">${pinchLabel}</span>
+        </div>
+        <div class="hand-card__metrics">${metricsMarkup}</div>
+        <div class="hand-card__footer">
+          <span class="metric-label">Confidence</span>
+          <strong>${confidenceValue}</strong>
+        </div>
+      </article>`;
+    })
+    .join("");
+
+  let pinchBannerMarkup = "";
+  const bothHandsPinched =
+    handTelemetry.length === 2 &&
+    handTelemetry.every((hand) => hand.isPinched);
+  if (bothHandsPinched && typeof pinchDistance === "number") {
+    const pinchGapValue = formatMetricValue(pinchDistance, {
+      suffix: " px",
+    });
+    pinchBannerMarkup = `<div class="pinch-banner" role="status">
+      <span class="pinch-banner__title">Dual pinch gap</span>
+      <span class="pinch-banner__value">${pinchGapValue}</span>
+    </div>`;
+  }
+
+  gestureOutput.hidden = false;
+  gestureOutput.innerHTML = `${pinchBannerMarkup}<div class="hand-card-grid">${cardsMarkup}</div>`;
 };
 
 const flipHandedness = (rawHandedness) => {
@@ -1398,9 +1560,7 @@ function stopWebcamStream() {
   video.srcObject = null;
   activeStream = null;
   webcamRunning = false;
-  if (gestureOutput) {
-    gestureOutput.style.display = "none";
-  }
+  renderGestureInsights();
 }
 
 async function requestCameraPermissionOnly() {
@@ -1528,6 +1688,7 @@ async function predictWebcam() {
   const thumbIndexMetrics = [];
   const pinchedMetrics = [];
   let pinchedHandsDistance = null;
+  const handTelemetry = [];
   canvasElement.style.height = videoHeight;
   webcamElement.style.height = videoHeight;
   canvasElement.style.width = videoWidth;
@@ -1551,21 +1712,49 @@ async function predictWebcam() {
         lineWidth: 2,
       });
       const metrics = computeThumbIndexMetrics(mirroredLandmarks);
+      const rawHandedness =
+        results.handednesses?.[index]?.[0]?.displayName || "Unknown";
+      const handedness = flipHandedness(rawHandedness);
+      let metricDetails = null;
+      let isPinched = false;
       if (metrics) {
-        const handedness =
-          results.handednesses?.[index]?.[0]?.displayName || "Unknown";
-        const metricDetails = {
+        metricDetails = {
           ...metrics,
-          handedness: flipHandedness(handedness),
+          handedness,
         };
-        const pinched = isThumbIndexPinched(metricDetails);
-        metricDetails.isPinched = pinched;
-        drawThumbIndexLine(metricDetails, { highlight: pinched });
-        if (pinched) {
+        isPinched = isThumbIndexPinched(metricDetails);
+        metricDetails.isPinched = isPinched;
+        drawThumbIndexLine(metricDetails, { highlight: isPinched });
+        if (isPinched) {
           pinchedMetrics.push(metricDetails);
         }
         thumbIndexMetrics.push(metricDetails);
       }
+      const orientationInfo = computePalmOrientationInfo(mirroredLandmarks);
+      const orientation = orientationInfo
+        ? {
+            pitch: roundToNearestStep(orientationInfo.pitch),
+            yaw: roundToNearestStep(orientationInfo.yaw),
+            roll: roundToNearestStep(orientationInfo.roll),
+          }
+        : null;
+      const pinchDistance = metricDetails
+        ? roundToNearestStep(metricDetails.distancePx)
+        : null;
+      const topGesture = results.gestures?.[index]?.[0];
+      handTelemetry.push({
+        handedness,
+        pinchDistance,
+        pinchThreshold: PINCH_DISTANCE_THRESHOLD_PX,
+        isPinched,
+        orientation,
+        gesture: topGesture
+          ? {
+              label: topGesture.categoryName,
+              confidence: roundToNearestStep(topGesture.score * 100),
+            }
+          : null,
+      });
     });
   }
   canvasCtx.restore();
@@ -1586,18 +1775,10 @@ async function predictWebcam() {
     drawThumbIndexLabel(metrics);
     updateInteractivity(metrics);
   });
-  const summaries = buildGestureSummaries(results);
-  const infoLines = [...summaries];
-  if (pinchedHandsDistance !== null) {
-    infoLines.push(`Hands Gap: ${pinchedHandsDistance.toFixed(1)} px`);
-  }
-  if (infoLines.length > 0) {
-    gestureOutput.style.display = "block";
-    gestureOutput.style.width = videoWidth;
-    gestureOutput.innerText = infoLines.join("\n\n");
-  } else {
-    gestureOutput.style.display = "none";
-  }
+  renderGestureInsights({
+    handTelemetry,
+    pinchDistance: pinchedHandsDistance,
+  });
   // Call this function again to keep predicting when the browser is ready.
   if (webcamRunning === true) {
     window.requestAnimationFrame(predictWebcam);
