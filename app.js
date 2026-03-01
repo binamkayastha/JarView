@@ -18,10 +18,10 @@ import {
 } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3";
 
 const demosSection = document.getElementById("demos");
-let gestureRecognizer: GestureRecognizer;
+let gestureRecognizer;
 let runningMode = "IMAGE";
-let enableWebcamButton: HTMLButtonElement;
-let webcamRunning: Boolean = false;
+let enableWebcamButton;
+let webcamRunning = false;
 const videoHeight = "360px";
 const videoWidth = "480px";
 
