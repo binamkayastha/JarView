@@ -91,12 +91,6 @@ section {
   pointer-events: none;
 }
 
-.output_canvas {
-  transform: rotateY(180deg);
-  -webkit-transform: rotateY(180deg);
-  -moz-transform: rotateY(180deg);
-}
-
 .detectOnClick {
   z-index: 0;
   font-size: calc(8px + 1.2vw);

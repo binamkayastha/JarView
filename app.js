@@ -25,6 +25,80 @@ let webcamRunning = false;
 const videoHeight = "360px";
 const videoWidth = "480px";
 const MAX_HANDS = 2;
+const THUMB_TIP_INDEX = 4;
+const INDEX_TIP_INDEX = 8;
+
+const computeThumbIndexMetrics = (landmarks) => {
+  if (!landmarks || !landmarks[THUMB_TIP_INDEX] || !landmarks[INDEX_TIP_INDEX]) {
+    return null;
+  }
+
+  const thumbTip = landmarks[THUMB_TIP_INDEX];
+  const indexTip = landmarks[INDEX_TIP_INDEX];
+  const start = {
+    x: thumbTip.x * canvasElement.width,
+    y: thumbTip.y * canvasElement.height
+  };
+  const end = {
+    x: indexTip.x * canvasElement.width,
+    y: indexTip.y * canvasElement.height
+  };
+
+  const distancePx = Math.hypot(end.x - start.x, end.y - start.y);
+  const midPoint = {
+    x: (start.x + end.x) / 2,
+    y: (start.y + end.y) / 2
+  };
+
+  return {
+    start,
+    end,
+    midPoint,
+    distancePx
+  };
+};
+
+const drawThumbIndexLine = (metrics) => {
+  if (!metrics) {
+    return;
+  }
+
+  canvasCtx.save();
+  canvasCtx.strokeStyle = "#FFD60A";
+  canvasCtx.lineWidth = 4;
+  canvasCtx.beginPath();
+  canvasCtx.moveTo(metrics.start.x, metrics.start.y);
+  canvasCtx.lineTo(metrics.end.x, metrics.end.y);
+  canvasCtx.stroke();
+  canvasCtx.restore();
+};
+
+const drawThumbIndexLabel = (metrics) => {
+  if (!metrics) {
+    return;
+  }
+
+  const mirroredMidX = canvasElement.width - metrics.midPoint.x;
+  const label = `Thumb-Index: ${metrics.distancePx.toFixed(1)} px`;
+  const padding = 8;
+  const backgroundHeight = 28;
+
+  canvasCtx.save();
+  canvasCtx.font = "20px sans-serif";
+  canvasCtx.textBaseline = "middle";
+  const textMetrics = canvasCtx.measureText(label);
+  const backgroundWidth = textMetrics.width + padding * 2;
+  const textY = Math.max(backgroundHeight, metrics.midPoint.y);
+  const backgroundX = mirroredMidX - backgroundWidth / 2;
+  const backgroundY = textY - backgroundHeight / 2;
+
+  canvasCtx.fillStyle = "rgba(0, 0, 0, 0.6)";
+  canvasCtx.fillRect(backgroundX, backgroundY, backgroundWidth, backgroundHeight);
+
+  canvasCtx.fillStyle = "#FFD60A";
+  canvasCtx.fillText(label, mirroredMidX - textMetrics.width / 2, textY);
+  canvasCtx.restore();
+};
 
 const flipHandedness = (rawHandedness) => {
   if (rawHandedness === "Left") return "Right";
@@ -222,15 +296,18 @@ async function predictWebcam() {
   }
 
   canvasCtx.save();
+  canvasCtx.setTransform(1, 0, 0, 1, 0, 0);
   canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
-  const drawingUtils = new DrawingUtils(canvasCtx);
-
+  const thumbIndexMetrics = [];
   canvasElement.style.height = videoHeight;
   webcamElement.style.height = videoHeight;
   canvasElement.style.width = videoWidth;
   webcamElement.style.width = videoWidth;
 
   if (results.landmarks) {
+    canvasCtx.translate(canvasElement.width, 0);
+    canvasCtx.scale(-1, 1);
+    const drawingUtils = new DrawingUtils(canvasCtx);
     for (const landmarks of results.landmarks) {
       drawingUtils.drawConnectors(
         landmarks,
@@ -244,9 +321,17 @@ async function predictWebcam() {
         color: "#FF0000",
         lineWidth: 2
       });
+      const metrics = computeThumbIndexMetrics(landmarks);
+      if (metrics) {
+        drawThumbIndexLine(metrics);
+        thumbIndexMetrics.push(metrics);
+      }
     }
   }
   canvasCtx.restore();
+  thumbIndexMetrics.forEach((metrics) => {
+    drawThumbIndexLabel(metrics);
+  });
   const summaries = buildGestureSummaries(results);
   if (summaries.length > 0) {
     gestureOutput.style.display = "block";
