@@ -24,6 +24,32 @@ let enableWebcamButton;
 let webcamRunning = false;
 const videoHeight = "360px";
 const videoWidth = "480px";
+const MAX_HANDS = 2;
+
+const flipHandedness = (rawHandedness) => {
+  if (rawHandedness === "Left") return "Right";
+  if (rawHandedness === "Right") return "Left";
+  return rawHandedness || "Unknown";
+};
+
+const buildGestureSummaries = (recognizerResults) => {
+  if (!recognizerResults?.gestures?.length) {
+    return [];
+  }
+  return recognizerResults.gestures
+    .map((gestureCandidates, index) => {
+      if (!gestureCandidates || gestureCandidates.length === 0) {
+        return null;
+      }
+      const topGesture = gestureCandidates[0];
+      const score = parseFloat(topGesture.score * 100).toFixed(2);
+      const rawHandedness =
+        recognizerResults.handednesses?.[index]?.[0]?.displayName;
+      const handedness = flipHandedness(rawHandedness);
+      return `Hand ${index + 1} (${handedness}): ${topGesture.categoryName} - ${score}%`;
+    })
+    .filter(Boolean);
+};
 
 // Before we can use HandLandmarker class we must wait for it to finish
 // loading. Machine Learning models can be large and take a moment to
@@ -38,7 +64,8 @@ const createGestureRecognizer = async () => {
         "https://storage.googleapis.com/mediapipe-models/gesture_recognizer/gesture_recognizer/float16/1/gesture_recognizer.task",
       delegate: "GPU"
     },
-    runningMode: runningMode
+    runningMode: runningMode,
+    numHands: MAX_HANDS
   });
   demosSection.classList.remove("invisible");
 };
@@ -62,7 +89,10 @@ async function handleClick(event) {
 
   if (runningMode === "VIDEO") {
     runningMode = "IMAGE";
-    await gestureRecognizer.setOptions({ runningMode: "IMAGE" });
+    await gestureRecognizer.setOptions({
+      runningMode: "IMAGE",
+      numHands: MAX_HANDS
+    });
   }
   // Remove all previous landmarks
   const allCanvas = event.target.parentNode.getElementsByClassName("canvas");
@@ -75,18 +105,11 @@ async function handleClick(event) {
 
   // View results in the console to see their format
   console.log(results);
-  if (results.gestures.length > 0) {
+  const summaries = buildGestureSummaries(results);
+  if (summaries.length > 0) {
     const p = event.target.parentNode.childNodes[3];
     p.setAttribute("class", "info");
-
-    const categoryName = results.gestures[0][0].categoryName;
-    const categoryScore = parseFloat(
-      results.gestures[0][0].score * 100
-    ).toFixed(2);
-    const rawHandedness = results.handednesses[0][0].displayName;
-    const handedness = rawHandedness === "Left" ? "Right" : "Left";
-
-    p.innerText = `GestureRecognizer: ${categoryName}\n Confidence: ${categoryScore}%\n Handedness: ${handedness}`;
+    p.innerText = summaries.join("\n");
     p.style =
       "left: 0px;" +
       "top: " +
@@ -187,7 +210,10 @@ async function predictWebcam() {
   // Now let's start detecting the stream.
   if (runningMode === "IMAGE") {
     runningMode = "VIDEO";
-    await gestureRecognizer.setOptions({ runningMode: "VIDEO" });
+    await gestureRecognizer.setOptions({
+      runningMode: "VIDEO",
+      numHands: MAX_HANDS
+    });
   }
   let nowInMs = Date.now();
   if (video.currentTime !== lastVideoTime) {
@@ -221,16 +247,11 @@ async function predictWebcam() {
     }
   }
   canvasCtx.restore();
-  if (results.gestures.length > 0) {
+  const summaries = buildGestureSummaries(results);
+  if (summaries.length > 0) {
     gestureOutput.style.display = "block";
     gestureOutput.style.width = videoWidth;
-    const categoryName = results.gestures[0][0].categoryName;
-    const categoryScore = parseFloat(
-      results.gestures[0][0].score * 100
-    ).toFixed(2);
-    const rawHandedness = results.handednesses[0][0].displayName;
-    const handedness = rawHandedness === "Left" ? "Right" : "Left";
-    gestureOutput.innerText = `GestureRecognizer: ${categoryName}\n Confidence: ${categoryScore} %\n Handedness: ${handedness}`;
+    gestureOutput.innerText = summaries.join("\n\n");
   } else {
     gestureOutput.style.display = "none";
   }
