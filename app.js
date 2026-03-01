@@ -1153,11 +1153,15 @@ const updateInteractivity = (metrics) => {
       return;
     }
     const distancePercentage = Math.min(metrics.distancePx, 300) / 300;
+    const roundedDistance = roundToNearestStep(distancePercentage * 100);
+    const smoothedDistancePercentage = Number.isFinite(roundedDistance)
+      ? Math.min(1, Math.max(0, roundedDistance / 100))
+      : distancePercentage;
     const scrollableAmount = Math.max(
       0,
       selectedDatePanel.scrollHeight - selectedDatePanel.clientHeight,
     );
-    const targetScrollTop = scrollableAmount * distancePercentage;
+    const targetScrollTop = scrollableAmount * smoothedDistancePercentage;
     if (Math.abs(selectedDatePanel.scrollTop - targetScrollTop) > 1) {
       selectedDatePanel.scrollTop = targetScrollTop;
     }
