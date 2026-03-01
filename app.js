@@ -31,12 +31,16 @@ const orbitDial = document.getElementById("orbitDial");
 const orbitDialValue = document.getElementById("orbitDialValue");
 const glowDial = document.getElementById("glowDial");
 const glowDialValue = document.getElementById("glowDialValue");
+const cameraPermissionBadge = document.getElementById("cameraPermissionBadge");
+const photosPermissionBadge = document.getElementById("photosPermissionBadge");
+const cameraPermissionButton = document.getElementById("cameraPermissionButton");
+const cameraPermissionSuccess = document.getElementById("cameraPermissionSuccess");
+const photosPermissionSuccess = document.getElementById("photosPermissionSuccess");
 let gestureRecognizer;
 let runningMode = "IMAGE";
-let enableWebcamButton;
 let webcamRunning = false;
-const videoHeight = "360px";
-const videoWidth = "480px";
+const videoHeight = "100%";
+const videoWidth = "100%";
 const MAX_HANDS = 2;
 const THUMB_TIP_INDEX = 4;
 const INDEX_TIP_INDEX = 8;
@@ -62,6 +66,96 @@ const starField = Array.from({ length: STAR_COUNT }, () => ({
   size: Math.random() * 1.4 + 0.3,
   alpha: Math.random() * 0.5 + 0.35
 }));
+
+let cameraPermissionState = "pending";
+let photosPermissionState = "pending";
+
+const STATUS_LABELS = {
+  pending: "Permission needed",
+  granted: "Granted",
+  error: "Action needed"
+};
+const CAMERA_PERMISSION_LABEL = "Give camera permission";
+const PHOTOS_PERMISSION_LABEL = "Give Photos permission";
+
+const setButtonLabel = (button, label) => {
+  if (!button || !label) return;
+  const labelSpan = button.querySelector(".mdc-button__label");
+  if (labelSpan) {
+    labelSpan.innerText = label;
+  } else {
+    button.innerText = label;
+  }
+};
+
+const updateStatusBadge = (badge, state) => {
+  if (!badge) return;
+  const nextState = STATUS_LABELS[state] ? state : "pending";
+  const icon = badge.querySelector(".status-badge__icon");
+  const text = badge.querySelector(".status-badge__text");
+  badge.dataset.state = nextState;
+  if (icon) {
+    icon.innerText =
+      nextState === "granted"
+        ? "\u2713"
+        : nextState === "error"
+        ? "!"
+        : "\u2022";
+  }
+  if (text) {
+    text.innerText = STATUS_LABELS[nextState];
+  }
+};
+
+const togglePermissionSuccess = (element, isVisible) => {
+  if (!element) return;
+  element.classList.toggle("is-visible", isVisible);
+  element.hidden = !isVisible;
+};
+
+const mapPermissionDescriptorState = (state) => {
+  if (state === "granted") return "granted";
+  if (state === "denied") return "error";
+  return "pending";
+};
+
+const setCameraPermissionState = (state) => {
+  cameraPermissionState = state;
+  updateStatusBadge(cameraPermissionBadge, state);
+  const granted = state === "granted";
+  if (cameraPermissionButton) {
+    if (granted) {
+      if (cameraPermissionButton.isConnected) {
+        cameraPermissionButton.remove();
+      }
+    } else {
+      cameraPermissionButton.hidden = false;
+      cameraPermissionButton.disabled = false;
+      setButtonLabel(cameraPermissionButton, CAMERA_PERMISSION_LABEL);
+    }
+  }
+  togglePermissionSuccess(cameraPermissionSuccess, granted);
+  if (granted) {
+    ensureWebcamFeed();
+  }
+};
+
+const setPhotosPermissionState = (state) => {
+  photosPermissionState = state;
+  updateStatusBadge(photosPermissionBadge, state);
+  const granted = state === "granted";
+  if (selectLibraryButton) {
+    selectLibraryButton.classList.toggle("hidden", granted);
+    selectLibraryButton.disabled = granted;
+    if (!granted) {
+      setButtonLabel(selectLibraryButton, PHOTOS_PERMISSION_LABEL);
+    }
+  }
+  togglePermissionSuccess(photosPermissionSuccess, granted);
+};
+
+setCameraPermissionState("pending");
+setPhotosPermissionState("pending");
 
 const MAX_DATE_PREVIEW_PHOTOS = 6;
 const TIMELINE_AXIS_PADDING_X = 60;
@@ -504,6 +598,11 @@ const setPhotoSources = (photos = [], { objectUrls = [] } = {}) => {
     ? photos.map((photo) => normalizePhotoMetadata(photo)).filter(Boolean)
     : [];
   currentPhotoSources = normalizedPhotos;
+  if (normalizedPhotos.length > 0) {
+    setPhotosPermissionState("granted");
+  } else if (photosPermissionState !== "error") {
+    setPhotosPermissionState("pending");
+  }
   updateCanvasWorld(currentPhotoSources);
 };
 
@@ -517,7 +616,7 @@ syncTimelineCanvasSize();
 updateCanvasWorld(currentPhotoSources);
 
 updateLibraryStatus(
-  "Select your Photos Library folder (e.g., ~/Pictures) to load thumbnails."
+  "Link your ~/Photos/Photos Library to populate the JarView canvas."
 );
 
 timelineSlider?.addEventListener("input", (event) => {
@@ -643,6 +742,7 @@ const requestPhotosLibraryAccess = async () => {
       "Your browser does not support folder access. Try Chrome or Edge.",
       { isError: true }
     );
+    setPhotosPermissionState("error");
     return;
   }
   try {
@@ -660,6 +760,9 @@ const requestPhotosLibraryAccess = async () => {
         "No images were found in the selected folder. Please try another directory.",
         { isError: true }
       );
+      if (photosPermissionState !== "error") {
+        setPhotosPermissionState("pending");
+      }
       return;
     }
     setPhotoSources(photos, { objectUrls });
@@ -674,6 +777,7 @@ const requestPhotosLibraryAccess = async () => {
       "Unable to access that folder. Ensure it is your Photos Library and retry.",
       { isError: true }
     );
+    setPhotosPermissionState("error");
   }
 };
 
@@ -684,7 +788,10 @@ if (!window.showDirectoryPicker && selectLibraryButton) {
     "Folder access requires a Chromium-based browser (Chrome, Edge, Arc, etc.).",
     { isError: true }
   );
+  setPhotosPermissionState("error");
 }
+
+cameraPermissionButton?.addEventListener("click", requestCameraPermissionOnly);
 
 const mirrorLandmarks = (landmarks) => {
   if (!landmarks) {
@@ -867,6 +974,24 @@ const createGestureRecognizer = async () => {
 };
 const gestureRecognizerReady = createGestureRecognizer();
 
+function ensureWebcamFeed() {
+  if (webcamRunning || cameraPermissionState !== "granted") {
+    return;
+  }
+  if (!hasGetUserMedia()) {
+    return;
+  }
+  gestureRecognizerReady
+    .then(() => {
+      if (!webcamRunning && cameraPermissionState === "granted") {
+        enableCam();
+      }
+    })
+    .catch((error) => {
+      console.error("Unable to start webcam automatically:", error);
+    });
+}
+
 /********************************************************************
 // Demo 1: Detect hand gestures in images
 ********************************************************************/
@@ -1003,6 +1128,7 @@ async function initCameraPermissionStatus() {
   try {
     const status = await navigator.permissions.query({ name: "camera" });
     const updateNotice = () => {
+      setCameraPermissionState(mapPermissionDescriptorState(status.state));
       if (status.state === "granted") {
         hidePermissionNotice();
       } else if (status.state === "denied") {
@@ -1023,17 +1149,9 @@ function hasGetUserMedia() {
   return !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
 }
 
-// If webcam supported, add event listener to button for when user
-// wants to activate it.
+// If webcam supported, initialize permission tracking.
 if (hasGetUserMedia()) {
-  enableWebcamButton = document.getElementById("webcamButton");
-  enableWebcamButton.addEventListener("click", enableCam);
   initCameraPermissionStatus();
-  gestureRecognizerReady.then(() => {
-    if (!webcamRunning) {
-      enableCam();
-    }
-  });
 } else {
   console.warn("getUserMedia() is not supported by your browser");
   showPermissionNotice(
@@ -1042,6 +1160,7 @@ if (hasGetUserMedia()) {
   if (requestPermissionButton) {
     requestPermissionButton.classList.add("hidden");
   }
+  setCameraPermissionState("error");
 }
 
 // Enable the live webcam view and start detection.
@@ -1066,11 +1185,37 @@ function stopWebcamStream() {
   video.srcObject = null;
   activeStream = null;
   webcamRunning = false;
-  if (enableWebcamButton) {
-    enableWebcamButton.innerText = "ENABLE PREDICTIONS";
-  }
   if (gestureOutput) {
     gestureOutput.style.display = "none";
+  }
+}
+
+async function requestCameraPermissionOnly() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    setCameraPermissionState("error");
+    console.warn("Camera permission request is unavailable in this browser.");
+    return;
+  }
+  if (cameraPermissionButton) {
+    cameraPermissionButton.disabled = true;
+    setButtonLabel(cameraPermissionButton, "Requesting...");
+  }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+    stream.getTracks().forEach((track) => track.stop());
+    setCameraPermissionState("granted");
+  } catch (error) {
+    console.error("Unable to complete camera permission request:", error);
+    const blocked =
+      error.name === "NotAllowedError" ||
+      error.name === "SecurityError" ||
+      error.name === "PermissionDeniedError";
+    setCameraPermissionState(blocked ? "error" : "pending");
+  } finally {
+    if (cameraPermissionButton && cameraPermissionState !== "granted") {
+      cameraPermissionButton.disabled = false;
+      setButtonLabel(cameraPermissionButton, CAMERA_PERMISSION_LABEL);
+    }
   }
 }
 
@@ -1094,10 +1239,6 @@ function requestCameraAccess(options = {}) {
     requestPermissionButton.innerText = "REQUESTING...";
   }
 
-  if (enableWebcamButton) {
-    enableWebcamButton.disabled = true;
-  }
-
   const constraints = {
     video: true
   };
@@ -1110,9 +1251,7 @@ function requestCameraAccess(options = {}) {
       video.removeEventListener("loadeddata", predictWebcam);
       video.addEventListener("loadeddata", predictWebcam);
       webcamRunning = true;
-      if (enableWebcamButton) {
-        enableWebcamButton.innerText = "DISABLE PREDICTIONS";
-      }
+      setCameraPermissionState("granted");
       if (requestPermissionButton) {
         requestPermissionButton.innerText = "RE-REQUEST CAMERA";
       }
@@ -1121,16 +1260,14 @@ function requestCameraAccess(options = {}) {
     .catch((error) => {
       activeStream = null;
       webcamRunning = false;
-      if (enableWebcamButton) {
-        enableWebcamButton.innerText = "ENABLE PREDICTIONS";
-      }
-      if (requestPermissionButton) {
-        requestPermissionButton.innerText = "RE-REQUEST CAMERA";
-      }
       const blocked =
         error.name === "NotAllowedError" ||
         error.name === "SecurityError" ||
         error.name === "PermissionDeniedError";
+      setCameraPermissionState(blocked ? "error" : "pending");
+      if (requestPermissionButton) {
+        requestPermissionButton.innerText = "RE-REQUEST CAMERA";
+      }
       const message = blocked
         ? PERMISSION_BLOCKED_MESSAGE
         : "Unable to access the camera. Make sure no other app is using it and try again.";
@@ -1138,9 +1275,6 @@ function requestCameraAccess(options = {}) {
       console.error("Error accessing camera:", error);
     })
     .finally(() => {
-      if (enableWebcamButton) {
-        enableWebcamButton.disabled = false;
-      }
       if (fromPermissionButton && requestPermissionButton) {
         requestPermissionButton.disabled = false;
       }
@@ -1163,6 +1297,16 @@ async function predictWebcam() {
   if (video.currentTime !== lastVideoTime) {
     lastVideoTime = video.currentTime;
     results = gestureRecognizer.recognizeForVideo(video, nowInMs);
+  }
+
+  if (video.videoWidth && video.videoHeight) {
+    if (
+      canvasElement.width !== video.videoWidth ||
+      canvasElement.height !== video.videoHeight
+    ) {
+      canvasElement.width = video.videoWidth;
+      canvasElement.height = video.videoHeight;
+    }
   }
 
   canvasCtx.save();

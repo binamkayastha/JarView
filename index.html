@@ -17,7 +17,7 @@ limitations under the License. -->
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>MediaPipe Hand Gesture Recognizer</title>
+  <title>JarView – Photos + Hand Gestures</title>
   <link href="https://unpkg.com/material-components-web@latest/dist/material-components-web.min.css" rel="stylesheet">
   <link rel="stylesheet" href="./media.css">
   <script src="https://unpkg.com/material-components-web@latest/dist/material-components-web.min.js"></script>
@@ -25,38 +25,56 @@ limitations under the License. -->
 
 <body>
   <div class="app-shell">
-    <div id="permissionNotice" class="permission-notice hidden" role="alertdialog" aria-modal="true"
-      aria-labelledby="permissionTitle">
-      <div class="permission-notice__card">
-        <h3 id="permissionTitle">Camera permission required</h3>
-        <p id="permissionMessage">
-          Camera permission is required for hand gesture recognition. Please allow access so predictions can start.
-        </p>
-        <div class="permission-notice__actions">
-          <button id="requestPermissionButton" class="mdc-button mdc-button--raised">
-            <span class="mdc-button__ripple"></span>
-            <span class="mdc-button__label">GRANT CAMERA ACCESS</span>
-          </button>
-        </div>
-      </div>
-    </div>
+    <header class="hero">
+      <h1 class="hero__title">JarView</h1>
+      <p class="hero__lead">Photos at the tip of your fingers.</p>
+      <p class="hero__body">Blend your Apple Photos timeline with live hand gestures. Grant camera and folder access once, then guide the storyboard with pinches and swipes.</p>
+    </header>
 
-    <h1>Recognize hand gestures using the MediaPipe HandGestureRecognizer task</h1>
-
-    <section id="library-preview" class="photo-library">
-      <div class="section-header">
+    <section class="how-to" aria-labelledby="howToTitle">
+      <div class="section-header stack">
         <div>
-          <h2>Apple Photos Library Preview</h2>
-          <p>Grant read-only access to your Photos Library package to explore every photo directly from disk.</p>
-        </div>
-        <div class="library-actions">
-          <button id="selectLibrary" class="mdc-button mdc-button--raised">
-            <span class="mdc-button__ripple"></span>
-            <span class="mdc-button__label">Give access to Photos Library</span>
-          </button>
+          <h2 id="howToTitle">How to use the app</h2>
+          <p>Complete these two permissions to light up the JarView canvas.</p>
         </div>
       </div>
-      <p id="libraryStatus" class="library-status" role="status"></p>
+      <ol class="how-to__list">
+        <li class="how-to-step">
+          <div class="how-to-step__top">
+            <span class="how-to-step__label">1. Give the website camera permissions when prompted</span>
+            <span id="cameraPermissionBadge" class="status-badge" data-state="pending">
+              <span class="status-badge__icon" aria-hidden="true">!</span>
+              <span class="status-badge__text">Permission needed</span>
+            </span>
+          </div>
+          <button id="cameraPermissionButton" class="mdc-button mdc-button--raised" type="button">
+            <span class="mdc-button__ripple"></span>
+            <span class="mdc-button__label">Give camera permission</span>
+          </button>
+          <div id="cameraPermissionSuccess" class="permission-success" role="status" aria-live="polite" hidden>
+            <span class="permission-success__icon" aria-hidden="true">&#10003;</span>
+            <span class="permission-success__text">Camera permission granted</span>
+          </div>
+        </li>
+        <li class="how-to-step">
+          <div class="how-to-step__top">
+            <span class="how-to-step__label">2. Allow access to <code>~/Photos</code> (Photos Library)</span>
+            <span id="photosPermissionBadge" class="status-badge" data-state="pending">
+              <span class="status-badge__icon" aria-hidden="true">!</span>
+              <span class="status-badge__text">Permission needed</span>
+            </span>
+          </div>
+          <button id="selectLibrary" class="mdc-button mdc-button--raised" type="button">
+            <span class="mdc-button__ripple"></span>
+            <span class="mdc-button__label">Give Photos permission</span>
+          </button>
+          <div id="photosPermissionSuccess" class="permission-success" role="status" aria-live="polite" hidden>
+            <span class="permission-success__icon" aria-hidden="true">&#10003;</span>
+            <span class="permission-success__text">Photos permission granted</span>
+          </div>
+          <p id="libraryStatus" class="library-status" role="status" aria-live="polite"></p>
+        </li>
+      </ol>
     </section>
 
     <section id="canvasWorld" class="canvas-world" aria-live="polite">
@@ -92,34 +110,38 @@ limitations under the License. -->
         </div>
       </div>
       <p id="canvasStatus" class="canvas-status">Load your Photos Library to unlock this canvas world.</p>
-      <div class="canvas-stage">
-        <canvas id="photoCanvas" role="img" aria-label="Visualization of photos arranged on a timeline"></canvas>
-      </div>
-      <div class="selected-date-panel">
-        <h3 id="selectedDateHeading">Selected day</h3>
-        <ul id="datePhotoList" class="date-photo-list">
-          <li class="date-photo-list__placeholder">No photos selected yet.</li>
-        </ul>
-      </div>
-    </section>
-
-    <section id="demos" class="invisible">
-      <h2><br>Demo: Webcam continuous hand gesture detection</h2>
-      <p>Use your hand to make gestures in front of the camera to get gesture classification. </br>Click <b>enable
-          webcam</b>
-        below and grant access to the webcam if prompted.</p>
-
-      <div id="liveView" class="videoView">
-        <button id="webcamButton" class="mdc-button mdc-button--raised">
-          <span class="mdc-button__ripple"></span>
-          <span class="mdc-button__label">ENABLE WEBCAM</span>
-        </button>
-        <div style="position: relative;">
-          <video id="webcam" autoplay playsinline></video>
-          <canvas class="output_canvas" id="output_canvas" width="1280" height="720"
-            style="position: absolute; left: 0px; top: 0px;"></canvas>
-          <p id='gesture_output' class="output"></p>
+      <div class="canvas-gesture-grid">
+        <div class="canvas-column">
+          <div class="canvas-stage">
+            <canvas id="photoCanvas" role="img" aria-label="Visualization of photos arranged on a timeline"></canvas>
+          </div>
+          <div class="selected-date-panel">
+            <h3 id="selectedDateHeading">Selected day</h3>
+            <ul id="datePhotoList" class="date-photo-list">
+              <li class="date-photo-list__placeholder">No photos selected yet.</li>
+            </ul>
+          </div>
         </div>
+        <section id="demos" class="gesture-panel invisible" aria-live="polite">
+          <div class="section-header compact">
+            <div>
+              <h3>Gesture Lab</h3>
+              <p>Keep your hands in frame to pinch, pan, or frame your highlight while watching the canvas react in real time.</p>
+            </div>
+          </div>
+          <ol class="gesture-panel__steps">
+            <li>Once camera access is granted, the live preview appears automatically next to the canvas.</li>
+            <li>Hold your hand 1-2 feet away and keep the center of your palm visible.</li>
+            <li>Pinch to scrub the timeline or hold an open palm to highlight a particular day.</li>
+          </ol>
+          <div id="liveView" class="videoView">
+            <div class="video-stage">
+              <video id="webcam" autoplay playsinline></video>
+              <canvas class="output_canvas" id="output_canvas" width="1280" height="720"></canvas>
+            </div>
+            <p id='gesture_output' class="output"></p>
+          </div>
+        </section>
       </div>
     </section>
   </div>
