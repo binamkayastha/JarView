@@ -18,17 +18,25 @@ import {
 } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3";
 
 const demosSection = document.getElementById("demos");
-const photoGrid = document.getElementById("photoGrid");
-const refreshPhotosButton = document.getElementById("refreshPhotos");
 const selectLibraryButton = document.getElementById("selectLibrary");
 const libraryStatus = document.getElementById("libraryStatus");
+const timelineCanvas = document.getElementById("photoCanvas");
+const timelineCtx = timelineCanvas?.getContext("2d");
+const timelineSlider = document.getElementById("dateSlider");
+const timelineLabel = document.getElementById("dateSliderLabel");
+const timelineStatus = document.getElementById("canvasStatus");
+const selectedDateHeading = document.getElementById("selectedDateHeading");
+const selectedDateList = document.getElementById("datePhotoList");
+const orbitDial = document.getElementById("orbitDial");
+const orbitDialValue = document.getElementById("orbitDialValue");
+const glowDial = document.getElementById("glowDial");
+const glowDialValue = document.getElementById("glowDialValue");
 let gestureRecognizer;
 let runningMode = "IMAGE";
 let enableWebcamButton;
 let webcamRunning = false;
 const videoHeight = "360px";
 const videoWidth = "480px";
-const DISPLAY_PHOTO_COUNT = 12;
 const MAX_HANDS = 2;
 const THUMB_TIP_INDEX = 4;
 const INDEX_TIP_INDEX = 8;
@@ -37,34 +45,449 @@ let activeStream = null;
 
 let currentPhotoSources = [];
 let activeObjectUrls = [];
+let timelineBuckets = [];
+let activeTimelineIndex = 0;
+let timelineCanvasWidth = 0;
+let timelineCanvasHeight = 360;
+let timelineAnimationFrame = null;
+const bucketThumbnailCache = new Map();
+const dialSettings = {
+  orbitHeight: orbitDial ? Number(orbitDial.value) : 60,
+  glowStrength: glowDial ? Number(glowDial.value) : 70
+};
+const STAR_COUNT = 85;
+const starField = Array.from({ length: STAR_COUNT }, () => ({
+  x: Math.random(),
+  y: Math.random(),
+  size: Math.random() * 1.4 + 0.3,
+  alpha: Math.random() * 0.5 + 0.35
+}));
 
-const shuffle = (array) => {
-  const clone = [...array];
-  for (let i = clone.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [clone[i], clone[j]] = [clone[j], clone[i]];
-  }
-  return clone;
+const MAX_DATE_PREVIEW_PHOTOS = 6;
+const TIMELINE_AXIS_PADDING_X = 60;
+const TIMELINE_AXIS_OFFSET_Y = 60;
+
+const updateDialOutput = (element, value, suffix = "%") => {
+  if (!element) return;
+  const number = Number.isFinite(value) ? Math.round(value) : 0;
+  element.innerText = `${number}${suffix}`;
 };
 
-const renderPhotoGrid = () => {
-  if (!photoGrid) return;
-  photoGrid.innerHTML = "";
-  if (!currentPhotoSources.length) {
-    photoGrid.innerHTML =
-      "<p class='photo-placeholder'>No photos loaded yet. Select your Photos Library to begin.</p>";
+const pruneBucketThumbnails = (validKeys = []) => {
+  const allow = new Set(validKeys);
+  bucketThumbnailCache.forEach((_, key) => {
+    if (!allow.has(key)) {
+      bucketThumbnailCache.delete(key);
+    }
+  });
+};
+
+const requestBucketThumbnail = (bucket) => {
+  if (!bucket || !bucket.photos?.length || bucketThumbnailCache.has(bucket.key)) {
     return;
   }
-  const photosToShow = currentPhotoSources.slice(0, DISPLAY_PHOTO_COUNT);
-  photosToShow.forEach((photo, idx) => {
-    const figure = document.createElement("figure");
-    figure.className = "photo-card";
-    figure.innerHTML = `
-      <img src="${photo.src}" alt="${photo.caption}" loading="lazy">
-      <figcaption>${photo.caption} • #${idx + 1}</figcaption>
-    `;
-    photoGrid.appendChild(figure);
+  const previewPhoto = bucket.photos.find((photo) => Boolean(photo?.src));
+  if (!previewPhoto) {
+    bucketThumbnailCache.set(bucket.key, { status: "empty" });
+    return;
+  }
+  const image = new Image();
+  image.decoding = "async";
+  bucketThumbnailCache.set(bucket.key, { status: "loading" });
+  image.onload = () => {
+    bucketThumbnailCache.set(bucket.key, { status: "ready", image });
+    scheduleTimelineRender();
+  };
+  image.onerror = () => {
+    bucketThumbnailCache.set(bucket.key, { status: "error" });
+  };
+  image.src = previewPhoto.src;
+};
+
+const warmBucketThumbnails = (buckets = []) => {
+  const keys = buckets.map((bucket) => bucket.key);
+  pruneBucketThumbnails(keys);
+  buckets.forEach((bucket) => requestBucketThumbnail(bucket));
+};
+
+const getSafeDate = (value) => {
+  if (!value) {
+    return null;
+  }
+  const candidate = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(candidate.getTime())) {
+    return null;
+  }
+  return candidate;
+};
+
+const formatFullDate = (date) => {
+  const safeDate = getSafeDate(date);
+  if (!safeDate) {
+    return "Undated";
+  }
+  return safeDate.toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "long",
+    day: "numeric"
   });
+};
+
+const formatShortDate = (date) => {
+  const safeDate = getSafeDate(date);
+  if (!safeDate) {
+    return "Undated";
+  }
+  return safeDate.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric"
+  });
+};
+
+const normalizePhotoMetadata = (photo) => {
+  if (!photo) {
+    return null;
+  }
+  const takenOn =
+    getSafeDate(photo.takenOn) ||
+    getSafeDate(photo.date) ||
+    getSafeDate(photo.lastModified);
+  const dateKey = takenOn
+    ? takenOn.toISOString().split("T")[0]
+    : photo.dateKey || "undated";
+  return {
+    ...photo,
+    takenOn: takenOn || null,
+    dateKey,
+    dateLabel: takenOn ? formatFullDate(takenOn) : "Undated",
+    dateShortLabel: takenOn ? formatShortDate(takenOn) : "Undated"
+  };
+};
+
+const buildTimelineBuckets = (photos = []) => {
+  const buckets = new Map();
+  photos.forEach((photo) => {
+    if (!photo) return;
+    const normalized = normalizePhotoMetadata(photo);
+    if (!normalized) return;
+    const key = normalized.dateKey || "undated";
+    if (!buckets.has(key)) {
+      buckets.set(key, {
+        key,
+        date: normalized.takenOn,
+        label: normalized.dateLabel,
+        shortLabel: normalized.dateShortLabel,
+        photos: []
+      });
+    }
+    buckets.get(key).photos.push(normalized);
+  });
+  const sorted = Array.from(buckets.values()).sort((a, b) => {
+    if (!a.date && !b.date) {
+      return a.label.localeCompare(b.label);
+    }
+    if (!a.date) return 1;
+    if (!b.date) return -1;
+    return a.date.getTime() - b.date.getTime();
+  });
+  return sorted;
+};
+
+const syncTimelineCanvasSize = () => {
+  if (!timelineCanvas) {
+    return;
+  }
+  const parentWidth =
+    timelineCanvas.parentElement?.clientWidth || timelineCanvas.clientWidth;
+  timelineCanvasWidth = parentWidth || 960;
+  timelineCanvasHeight = 360;
+  timelineCanvas.width = timelineCanvasWidth;
+  timelineCanvas.height = timelineCanvasHeight;
+};
+
+const clearSelectedDatePanel = (message = "No photos selected yet.") => {
+  if (selectedDateHeading) {
+    selectedDateHeading.innerText = "Selected day";
+  }
+  if (selectedDateList) {
+    selectedDateList.innerHTML = `<li class="date-photo-list__placeholder">${message}</li>`;
+  }
+  if (timelineLabel) {
+    timelineLabel.innerText = "No date selected";
+  }
+};
+
+const updateSelectedDatePanel = () => {
+  if (!timelineBuckets.length) {
+    clearSelectedDatePanel();
+    return;
+  }
+  const bucket =
+    timelineBuckets[activeTimelineIndex] ||
+    timelineBuckets[timelineBuckets.length - 1];
+  if (!bucket) {
+    clearSelectedDatePanel();
+    return;
+  }
+  const titleSuffix = bucket.photos.length === 1 ? "photo" : "photos";
+  if (selectedDateHeading) {
+    selectedDateHeading.innerText = `${bucket.label} • ${bucket.photos.length} ${titleSuffix}`;
+  }
+  if (timelineLabel) {
+    timelineLabel.innerText = bucket.label;
+  }
+  if (!selectedDateList) {
+    return;
+  }
+  selectedDateList.innerHTML = "";
+  const previewPhotos = bucket.photos.slice(0, MAX_DATE_PREVIEW_PHOTOS);
+  previewPhotos.forEach((photo) => {
+    const listItem = document.createElement("li");
+    listItem.className = "date-photo-card";
+    listItem.innerHTML = `
+      <img src="${photo.src}" alt="${photo.caption || "Photo"}" loading="lazy">
+      <span>${photo.caption || photo.dateLabel || "Untitled photo"}</span>
+    `;
+    selectedDateList.appendChild(listItem);
+  });
+  if (!previewPhotos.length) {
+    const placeholder = document.createElement("li");
+    placeholder.className = "date-photo-list__placeholder";
+    placeholder.innerText = "No visible thumbnails for this day.";
+    selectedDateList.appendChild(placeholder);
+  } else if (bucket.photos.length > previewPhotos.length) {
+    const extra = bucket.photos.length - previewPhotos.length;
+    const moreItem = document.createElement("li");
+    moreItem.className = "date-photo-list__placeholder";
+    moreItem.innerText = `+${extra} more ${extra === 1 ? "photo" : "photos"} from this day`;
+    selectedDateList.appendChild(moreItem);
+  }
+};
+
+const renderTimelineCanvas = () => {
+  if (!timelineCanvas || !timelineCtx) {
+    return;
+  }
+  syncTimelineCanvasSize();
+  const now = typeof performance !== "undefined" ? performance.now() : Date.now();
+  timelineCtx.clearRect(0, 0, timelineCanvasWidth, timelineCanvasHeight);
+  const skyGradient = timelineCtx.createLinearGradient(
+    0,
+    0,
+    timelineCanvasWidth,
+    timelineCanvasHeight
+  );
+  skyGradient.addColorStop(0, "#041428");
+  skyGradient.addColorStop(0.5, "#062038");
+  skyGradient.addColorStop(1, "#010b16");
+  timelineCtx.fillStyle = skyGradient;
+  timelineCtx.fillRect(0, 0, timelineCanvasWidth, timelineCanvasHeight);
+
+  starField.forEach((star, index) => {
+    const twinkle =
+      star.alpha *
+      (0.7 + Math.sin(now / 1000 + index * 0.37) * 0.25);
+    timelineCtx.beginPath();
+    timelineCtx.fillStyle = `rgba(255,255,255,${twinkle})`;
+    timelineCtx.arc(
+      star.x * timelineCanvasWidth,
+      star.y * (timelineCanvasHeight - 100) + 20,
+      star.size,
+      0,
+      Math.PI * 2
+    );
+    timelineCtx.fill();
+  });
+
+  if (!timelineBuckets.length) {
+    return;
+  }
+  const orbitMultiplier = 0.55 + (dialSettings.orbitHeight / 100) * 1.25;
+  const glowMultiplier = 0.45 + (dialSettings.glowStrength / 100) * 2.1;
+  const axisY = timelineCanvasHeight - TIMELINE_AXIS_OFFSET_Y;
+  const axisStart = TIMELINE_AXIS_PADDING_X;
+  const axisEnd = timelineCanvasWidth - TIMELINE_AXIS_PADDING_X;
+  const axisGradient = timelineCtx.createLinearGradient(axisStart, axisY, axisEnd, axisY);
+  axisGradient.addColorStop(0, "rgba(0, 245, 212, 0.1)");
+  axisGradient.addColorStop(0.5, "rgba(255, 214, 10, 0.5)");
+  axisGradient.addColorStop(1, "rgba(0, 123, 255, 0.35)");
+  timelineCtx.strokeStyle = axisGradient;
+  timelineCtx.lineWidth = 3;
+  timelineCtx.shadowColor = "rgba(255, 214, 10, 0.25)";
+  timelineCtx.shadowBlur = 18 * glowMultiplier;
+  timelineCtx.beginPath();
+  timelineCtx.moveTo(axisStart, axisY);
+  timelineCtx.lineTo(axisEnd, axisY);
+  timelineCtx.stroke();
+  timelineCtx.shadowBlur = 0;
+
+  const divisor = Math.max(timelineBuckets.length - 1, 1);
+  const gap = (axisEnd - axisStart) / divisor;
+
+  timelineBuckets.forEach((bucket, index) => {
+    const centerX = axisStart + gap * index;
+    const isActive = index === activeTimelineIndex;
+    const radius = Math.min(
+      46,
+      16 + Math.sqrt(bucket.photos.length || 1) * 6
+    );
+    const lift = Math.min(bucket.photos.length * 3 * orbitMultiplier, 130);
+    const centerY = axisY - 40 - lift;
+    const glowStrength = (isActive ? 14 : 8) * glowMultiplier;
+    const passiveGlowAlpha = Math.min(0.25 + glowMultiplier * 0.08, 0.9);
+
+    timelineCtx.save();
+    timelineCtx.lineWidth = isActive ? 4 : 2;
+    timelineCtx.shadowColor = isActive
+      ? "rgba(255, 214, 10, 0.65)"
+      : `rgba(128, 208, 199, ${passiveGlowAlpha})`;
+    timelineCtx.shadowBlur = glowStrength;
+    const bubbleGradient = timelineCtx.createRadialGradient(
+      centerX,
+      centerY,
+      Math.max(radius - 10, 8),
+      centerX,
+      centerY,
+      radius + 10
+    );
+    if (isActive) {
+      bubbleGradient.addColorStop(0, "#fff4c3");
+      bubbleGradient.addColorStop(0.6, "#ffd60a");
+      bubbleGradient.addColorStop(1, "rgba(255, 214, 10, 0.3)");
+    } else if (bucket.date) {
+      bubbleGradient.addColorStop(0, "#9df0ff");
+      bubbleGradient.addColorStop(0.6, "#46c7f2");
+      bubbleGradient.addColorStop(1, "rgba(70, 199, 242, 0.15)");
+    } else {
+      bubbleGradient.addColorStop(0, "#e0e0e0");
+      bubbleGradient.addColorStop(1, "rgba(122, 134, 154, 0.2)");
+    }
+    timelineCtx.strokeStyle = isActive
+      ? "rgba(255, 214, 10, 0.9)"
+      : "rgba(255, 255, 255, 0.35)";
+    timelineCtx.fillStyle = bubbleGradient;
+    timelineCtx.beginPath();
+    timelineCtx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+    timelineCtx.fill();
+    timelineCtx.stroke();
+    timelineCtx.restore();
+
+    const thumbnailEntry = bucketThumbnailCache.get(bucket.key);
+    if (thumbnailEntry?.status === "ready" && thumbnailEntry.image) {
+      const insetRadius = Math.max(radius - 8, 12);
+      const thumbSize = insetRadius * 2;
+      timelineCtx.save();
+      timelineCtx.beginPath();
+      timelineCtx.arc(centerX, centerY, insetRadius, 0, Math.PI * 2);
+      timelineCtx.closePath();
+      timelineCtx.clip();
+      timelineCtx.drawImage(
+        thumbnailEntry.image,
+        centerX - insetRadius,
+        centerY - insetRadius,
+        thumbSize,
+        thumbSize
+      );
+      timelineCtx.restore();
+    } else if (thumbnailEntry?.status === "loading") {
+      timelineCtx.save();
+      timelineCtx.strokeStyle = "rgba(255,255,255,0.8)";
+      timelineCtx.lineWidth = 2;
+      timelineCtx.setLineDash([4, 4]);
+      timelineCtx.beginPath();
+      timelineCtx.arc(centerX, centerY, radius - 6, 0, Math.PI * 2);
+      timelineCtx.stroke();
+      timelineCtx.restore();
+    }
+
+    if (isActive) {
+      timelineCtx.save();
+      timelineCtx.globalAlpha = 0.6;
+      timelineCtx.strokeStyle = "rgba(255, 214, 10, 0.6)";
+      timelineCtx.lineWidth = 6;
+      timelineCtx.setLineDash([8, 6]);
+      timelineCtx.shadowColor = "rgba(255, 214, 10, 0.5)";
+      timelineCtx.shadowBlur = 20 * glowMultiplier;
+      timelineCtx.beginPath();
+      timelineCtx.arc(centerX, centerY, radius + 10, 0, Math.PI * 2);
+      timelineCtx.stroke();
+      timelineCtx.restore();
+    }
+
+    timelineCtx.save();
+    timelineCtx.fillStyle = "rgba(255, 255, 255, 0.9)";
+    timelineCtx.font = isActive ? "600 14px 'Inter', sans-serif" : "12px sans-serif";
+    timelineCtx.textAlign = "center";
+    timelineCtx.textBaseline = "middle";
+    timelineCtx.fillText(bucket.shortLabel, centerX, axisY + 20);
+    timelineCtx.fillStyle = "rgba(255, 255, 255, 0.75)";
+    timelineCtx.font = "11px sans-serif";
+    timelineCtx.fillText(
+      `${bucket.photos.length} ${bucket.photos.length === 1 ? "photo" : "photos"}`,
+      centerX,
+      axisY + 36
+    );
+    timelineCtx.restore();
+
+    timelineCtx.save();
+    timelineCtx.strokeStyle = "rgba(255, 255, 255, 0.08)";
+    timelineCtx.lineWidth = 1.5;
+    timelineCtx.setLineDash([4, 6]);
+    timelineCtx.beginPath();
+    timelineCtx.moveTo(centerX, axisY);
+    timelineCtx.lineTo(centerX, centerY + radius);
+    timelineCtx.stroke();
+    timelineCtx.restore();
+  });
+};
+
+const scheduleTimelineRender = () => {
+  if (!timelineCanvas || !timelineCtx) {
+    return;
+  }
+  if (timelineAnimationFrame) {
+    cancelAnimationFrame(timelineAnimationFrame);
+  }
+  timelineAnimationFrame = window.requestAnimationFrame(() => {
+    renderTimelineCanvas();
+  });
+};
+
+const updateCanvasWorld = (photos = []) => {
+  timelineBuckets = buildTimelineBuckets(photos);
+  warmBucketThumbnails(timelineBuckets);
+  if (!timelineBuckets.length) {
+    pruneBucketThumbnails([]);
+    if (timelineStatus) {
+      timelineStatus.innerText =
+        "No photos yet. Load a Photos Library to populate the canvas world.";
+    }
+    if (timelineSlider) {
+      timelineSlider.disabled = true;
+      timelineSlider.value = 0;
+      timelineSlider.min = 0;
+      timelineSlider.max = 0;
+    }
+    clearSelectedDatePanel();
+    scheduleTimelineRender();
+    return;
+  }
+  if (timelineStatus) {
+    timelineStatus.innerText = `Organized ${photos.length} photo${
+      photos.length === 1 ? "" : "s"
+    } into ${timelineBuckets.length} date group${
+      timelineBuckets.length === 1 ? "" : "s"
+    }.`;
+  }
+  activeTimelineIndex = Math.min(activeTimelineIndex, timelineBuckets.length - 1);
+  if (timelineSlider) {
+    timelineSlider.disabled = timelineBuckets.length <= 1;
+    timelineSlider.min = 0;
+    timelineSlider.max = timelineBuckets.length - 1;
+    timelineSlider.value = activeTimelineIndex;
+  }
+  updateSelectedDatePanel();
+  scheduleTimelineRender();
 };
 
 const clearActiveObjectUrls = () => {
@@ -77,20 +500,11 @@ const setPhotoSources = (photos = [], { objectUrls = [] } = {}) => {
   if (objectUrls.length) {
     activeObjectUrls = objectUrls;
   }
-  currentPhotoSources = Array.isArray(photos) ? [...photos] : [];
-  renderPhotoGrid();
-  if (refreshPhotosButton) {
-    refreshPhotosButton.disabled = currentPhotoSources.length === 0;
-  }
-};
-
-const refreshPhotoGrid = () => {
-  if (!currentPhotoSources.length) {
-    updateLibraryStatus("Load your Photos Library first to enable shuffling.");
-    return;
-  }
-  currentPhotoSources = shuffle(currentPhotoSources);
-  renderPhotoGrid();
+  const normalizedPhotos = Array.isArray(photos)
+    ? photos.map((photo) => normalizePhotoMetadata(photo)).filter(Boolean)
+    : [];
+  currentPhotoSources = normalizedPhotos;
+  updateCanvasWorld(currentPhotoSources);
 };
 
 const updateLibraryStatus = (message, { isError = false } = {}) => {
@@ -99,14 +513,39 @@ const updateLibraryStatus = (message, { isError = false } = {}) => {
   libraryStatus.classList.toggle("library-status--error", isError);
 };
 
-if (photoGrid) {
-  renderPhotoGrid();
-  refreshPhotosButton?.addEventListener("click", refreshPhotoGrid);
-}
+syncTimelineCanvasSize();
+updateCanvasWorld(currentPhotoSources);
 
 updateLibraryStatus(
   "Select your Photos Library folder (e.g., ~/Pictures) to load thumbnails."
 );
+
+timelineSlider?.addEventListener("input", (event) => {
+  const nextIndex = Number(event.target.value);
+  activeTimelineIndex = Number.isNaN(nextIndex) ? 0 : nextIndex;
+  updateSelectedDatePanel();
+  scheduleTimelineRender();
+});
+
+const handleDialInput = (field, outputElement) => (event) => {
+  const nextValue = Number(event.target.value);
+  if (!Number.isFinite(nextValue)) {
+    return;
+  }
+  dialSettings[field] = nextValue;
+  updateDialOutput(outputElement, nextValue);
+  scheduleTimelineRender();
+};
+
+updateDialOutput(orbitDialValue, dialSettings.orbitHeight);
+updateDialOutput(glowDialValue, dialSettings.glowStrength);
+orbitDial?.addEventListener("input", handleDialInput("orbitHeight", orbitDialValue));
+glowDial?.addEventListener("input", handleDialInput("glowStrength", glowDialValue));
+
+window.addEventListener("resize", () => {
+  syncTimelineCanvasSize();
+  scheduleTimelineRender();
+});
 
 const IMAGE_EXTENSIONS = [".jpg", ".jpeg", ".png", ".heic", ".heif"];
 const MAX_DYNAMIC_PHOTOS = 60;
@@ -180,9 +619,12 @@ const collectPhotosFromHandle = async (
       if (entry.kind === "file" && isImageFile(entry.name)) {
         const file = await entry.getFile();
         const url = URL.createObjectURL(file);
+        const takenOn = file.lastModified ? new Date(file.lastModified) : null;
         photos.push({
           src: url,
-          caption: file.name
+          caption: file.name,
+          takenOn,
+          lastModified: file.lastModified
         });
         objectUrls.push(url);
       } else if (entry.kind === "directory") {
@@ -221,12 +663,7 @@ const requestPhotosLibraryAccess = async () => {
       return;
     }
     setPhotoSources(photos, { objectUrls });
-    updateLibraryStatus(
-      `Showing ${Math.min(
-        photos.length,
-        SAMPLE_PHOTO_COUNT
-      )} of ${photos.length} photos (shuffle for more).`
-    );
+    updateLibraryStatus(`Retrieved ${photos.length} photos.`);
   } catch (error) {
     if (error?.name === "AbortError") {
       updateLibraryStatus("Folder selection was cancelled.");
