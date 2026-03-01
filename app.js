@@ -14,7 +14,7 @@
 import {
   GestureRecognizer,
   FilesetResolver,
-  DrawingUtils
+  DrawingUtils,
 } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3";
 
 const demosSection = document.getElementById("demos");
@@ -33,9 +33,15 @@ const glowDial = document.getElementById("glowDial");
 const glowDialValue = document.getElementById("glowDialValue");
 const cameraPermissionBadge = document.getElementById("cameraPermissionBadge");
 const photosPermissionBadge = document.getElementById("photosPermissionBadge");
-const cameraPermissionButton = document.getElementById("cameraPermissionButton");
-const cameraPermissionSuccess = document.getElementById("cameraPermissionSuccess");
-const photosPermissionSuccess = document.getElementById("photosPermissionSuccess");
+const cameraPermissionButton = document.getElementById(
+  "cameraPermissionButton",
+);
+const cameraPermissionSuccess = document.getElementById(
+  "cameraPermissionSuccess",
+);
+const photosPermissionSuccess = document.getElementById(
+  "photosPermissionSuccess",
+);
 let gestureRecognizer;
 let runningMode = "IMAGE";
 let webcamRunning = false;
@@ -57,14 +63,14 @@ let timelineAnimationFrame = null;
 const bucketThumbnailCache = new Map();
 const dialSettings = {
   orbitHeight: orbitDial ? Number(orbitDial.value) : 60,
-  glowStrength: glowDial ? Number(glowDial.value) : 70
+  glowStrength: glowDial ? Number(glowDial.value) : 70,
 };
 const STAR_COUNT = 85;
 const starField = Array.from({ length: STAR_COUNT }, () => ({
   x: Math.random(),
   y: Math.random(),
   size: Math.random() * 1.4 + 0.3,
-  alpha: Math.random() * 0.5 + 0.35
+  alpha: Math.random() * 0.5 + 0.35,
 }));
 
 let cameraPermissionState = "pending";
@@ -73,7 +79,7 @@ let photosPermissionState = "pending";
 const STATUS_LABELS = {
   pending: "Permission needed",
   granted: "Granted",
-  error: "Action needed"
+  error: "Action needed",
 };
 const CAMERA_PERMISSION_LABEL = "Give camera permission";
 const PHOTOS_PERMISSION_LABEL = "Give Photos permission";
@@ -99,8 +105,8 @@ const updateStatusBadge = (badge, state) => {
       nextState === "granted"
         ? "\u2713"
         : nextState === "error"
-        ? "!"
-        : "\u2022";
+          ? "!"
+          : "\u2022";
   }
   if (text) {
     text.innerText = STATUS_LABELS[nextState];
@@ -177,7 +183,11 @@ const pruneBucketThumbnails = (validKeys = []) => {
 };
 
 const requestBucketThumbnail = (bucket) => {
-  if (!bucket || !bucket.photos?.length || bucketThumbnailCache.has(bucket.key)) {
+  if (
+    !bucket ||
+    !bucket.photos?.length ||
+    bucketThumbnailCache.has(bucket.key)
+  ) {
     return;
   }
   const previewPhoto = bucket.photos.find((photo) => Boolean(photo?.src));
@@ -223,7 +233,7 @@ const formatFullDate = (date) => {
   return safeDate.toLocaleDateString(undefined, {
     year: "numeric",
     month: "long",
-    day: "numeric"
+    day: "numeric",
   });
 };
 
@@ -234,7 +244,7 @@ const formatShortDate = (date) => {
   }
   return safeDate.toLocaleDateString(undefined, {
     month: "short",
-    day: "numeric"
+    day: "numeric",
   });
 };
 
@@ -254,7 +264,7 @@ const normalizePhotoMetadata = (photo) => {
     takenOn: takenOn || null,
     dateKey,
     dateLabel: takenOn ? formatFullDate(takenOn) : "Undated",
-    dateShortLabel: takenOn ? formatShortDate(takenOn) : "Undated"
+    dateShortLabel: takenOn ? formatShortDate(takenOn) : "Undated",
   };
 };
 
@@ -271,7 +281,7 @@ const buildTimelineBuckets = (photos = []) => {
         date: normalized.takenOn,
         label: normalized.dateLabel,
         shortLabel: normalized.dateShortLabel,
-        photos: []
+        photos: [],
       });
     }
     buckets.get(key).photos.push(normalized);
@@ -363,13 +373,14 @@ const renderTimelineCanvas = () => {
     return;
   }
   syncTimelineCanvasSize();
-  const now = typeof performance !== "undefined" ? performance.now() : Date.now();
+  const now =
+    typeof performance !== "undefined" ? performance.now() : Date.now();
   timelineCtx.clearRect(0, 0, timelineCanvasWidth, timelineCanvasHeight);
   const skyGradient = timelineCtx.createLinearGradient(
     0,
     0,
     timelineCanvasWidth,
-    timelineCanvasHeight
+    timelineCanvasHeight,
   );
   skyGradient.addColorStop(0, "#041428");
   skyGradient.addColorStop(0.5, "#062038");
@@ -379,8 +390,7 @@ const renderTimelineCanvas = () => {
 
   starField.forEach((star, index) => {
     const twinkle =
-      star.alpha *
-      (0.7 + Math.sin(now / 1000 + index * 0.37) * 0.25);
+      star.alpha * (0.7 + Math.sin(now / 1000 + index * 0.37) * 0.25);
     timelineCtx.beginPath();
     timelineCtx.fillStyle = `rgba(255,255,255,${twinkle})`;
     timelineCtx.arc(
@@ -388,7 +398,7 @@ const renderTimelineCanvas = () => {
       star.y * (timelineCanvasHeight - 100) + 20,
       star.size,
       0,
-      Math.PI * 2
+      Math.PI * 2,
     );
     timelineCtx.fill();
   });
@@ -401,7 +411,12 @@ const renderTimelineCanvas = () => {
   const axisY = timelineCanvasHeight - TIMELINE_AXIS_OFFSET_Y;
   const axisStart = TIMELINE_AXIS_PADDING_X;
   const axisEnd = timelineCanvasWidth - TIMELINE_AXIS_PADDING_X;
-  const axisGradient = timelineCtx.createLinearGradient(axisStart, axisY, axisEnd, axisY);
+  const axisGradient = timelineCtx.createLinearGradient(
+    axisStart,
+    axisY,
+    axisEnd,
+    axisY,
+  );
   axisGradient.addColorStop(0, "rgba(0, 245, 212, 0.1)");
   axisGradient.addColorStop(0.5, "rgba(255, 214, 10, 0.5)");
   axisGradient.addColorStop(1, "rgba(0, 123, 255, 0.35)");
@@ -421,10 +436,7 @@ const renderTimelineCanvas = () => {
   timelineBuckets.forEach((bucket, index) => {
     const centerX = axisStart + gap * index;
     const isActive = index === activeTimelineIndex;
-    const radius = Math.min(
-      46,
-      16 + Math.sqrt(bucket.photos.length || 1) * 6
-    );
+    const radius = Math.min(46, 16 + Math.sqrt(bucket.photos.length || 1) * 6);
     const lift = Math.min(bucket.photos.length * 3 * orbitMultiplier, 130);
     const centerY = axisY - 40 - lift;
     const glowStrength = (isActive ? 14 : 8) * glowMultiplier;
@@ -442,7 +454,7 @@ const renderTimelineCanvas = () => {
       Math.max(radius - 10, 8),
       centerX,
       centerY,
-      radius + 10
+      radius + 10,
     );
     if (isActive) {
       bubbleGradient.addColorStop(0, "#fff4c3");
@@ -480,7 +492,7 @@ const renderTimelineCanvas = () => {
         centerX - insetRadius,
         centerY - insetRadius,
         thumbSize,
-        thumbSize
+        thumbSize,
       );
       timelineCtx.restore();
     } else if (thumbnailEntry?.status === "loading") {
@@ -510,7 +522,9 @@ const renderTimelineCanvas = () => {
 
     timelineCtx.save();
     timelineCtx.fillStyle = "rgba(255, 255, 255, 0.9)";
-    timelineCtx.font = isActive ? "600 14px 'Inter', sans-serif" : "12px sans-serif";
+    timelineCtx.font = isActive
+      ? "600 14px 'Inter', sans-serif"
+      : "12px sans-serif";
     timelineCtx.textAlign = "center";
     timelineCtx.textBaseline = "middle";
     timelineCtx.fillText(bucket.shortLabel, centerX, axisY + 20);
@@ -519,7 +533,7 @@ const renderTimelineCanvas = () => {
     timelineCtx.fillText(
       `${bucket.photos.length} ${bucket.photos.length === 1 ? "photo" : "photos"}`,
       centerX,
-      axisY + 36
+      axisY + 36,
     );
     timelineCtx.restore();
 
@@ -573,7 +587,10 @@ const updateCanvasWorld = (photos = []) => {
       timelineBuckets.length === 1 ? "" : "s"
     }.`;
   }
-  activeTimelineIndex = Math.min(activeTimelineIndex, timelineBuckets.length - 1);
+  activeTimelineIndex = Math.min(
+    activeTimelineIndex,
+    timelineBuckets.length - 1,
+  );
   if (timelineSlider) {
     timelineSlider.disabled = timelineBuckets.length <= 1;
     timelineSlider.min = 0;
@@ -616,7 +633,7 @@ syncTimelineCanvasSize();
 updateCanvasWorld(currentPhotoSources);
 
 updateLibraryStatus(
-  "Link your ~/Photos/Photos Library to populate the JarView canvas."
+  "Link your ~/Photos/Photos Library to populate the JarView canvas.",
 );
 
 timelineSlider?.addEventListener("input", (event) => {
@@ -638,8 +655,14 @@ const handleDialInput = (field, outputElement) => (event) => {
 
 updateDialOutput(orbitDialValue, dialSettings.orbitHeight);
 updateDialOutput(glowDialValue, dialSettings.glowStrength);
-orbitDial?.addEventListener("input", handleDialInput("orbitHeight", orbitDialValue));
-glowDial?.addEventListener("input", handleDialInput("glowStrength", glowDialValue));
+orbitDial?.addEventListener(
+  "input",
+  handleDialInput("orbitHeight", orbitDialValue),
+);
+glowDial?.addEventListener(
+  "input",
+  handleDialInput("glowStrength", glowDialValue),
+);
 
 window.addEventListener("resize", () => {
   syncTimelineCanvasSize();
@@ -653,9 +676,14 @@ const MAX_PREVIEW_DIMENSION = 720;
 const PREVIEW_EXPORT_TYPE = "image/jpeg";
 const PREVIEW_EXPORT_QUALITY = 0.82;
 
-const canvasToBlob = (canvas, { type = PREVIEW_EXPORT_TYPE, quality = PREVIEW_EXPORT_QUALITY } = {}) => {
+const canvasToBlob = (
+  canvas,
+  { type = PREVIEW_EXPORT_TYPE, quality = PREVIEW_EXPORT_QUALITY } = {},
+) => {
   if (!canvas) {
-    return Promise.reject(new Error("Canvas not available for thumbnail rendering."));
+    return Promise.reject(
+      new Error("Canvas not available for thumbnail rendering."),
+    );
   }
   if (typeof canvas.convertToBlob === "function") {
     return canvas.convertToBlob({ type, quality });
@@ -664,13 +692,17 @@ const canvasToBlob = (canvas, { type = PREVIEW_EXPORT_TYPE, quality = PREVIEW_EX
     return Promise.reject(new Error("Canvas blob export is unsupported."));
   }
   return new Promise((resolve, reject) => {
-    canvas.toBlob((blob) => {
-      if (blob) {
-        resolve(blob);
-      } else {
-        reject(new Error("Failed to convert canvas to blob."));
-      }
-    }, type, quality);
+    canvas.toBlob(
+      (blob) => {
+        if (blob) {
+          resolve(blob);
+        } else {
+          reject(new Error("Failed to convert canvas to blob."));
+        }
+      },
+      type,
+      quality,
+    );
   });
 };
 
@@ -684,7 +716,7 @@ const decodeImageSource = async (file) => {
       image: bitmap,
       width: bitmap.width,
       height: bitmap.height,
-      cleanup: () => bitmap.close && bitmap.close()
+      cleanup: () => bitmap.close && bitmap.close(),
     };
   }
   if (typeof Image === "undefined") {
@@ -704,7 +736,7 @@ const decodeImageSource = async (file) => {
         height,
         cleanup: () => {
           image.src = "";
-        }
+        },
       });
     };
     image.onerror = (error) => {
@@ -719,7 +751,10 @@ const createPreviewUrlFromFile = async (file) => {
   if (!file) {
     return { src: null, urls: [] };
   }
-  if (typeof document === "undefined" && typeof OffscreenCanvas === "undefined") {
+  if (
+    typeof document === "undefined" &&
+    typeof OffscreenCanvas === "undefined"
+  ) {
     const fallbackUrl = URL.createObjectURL(file);
     return { src: fallbackUrl, urls: [fallbackUrl] };
   }
@@ -732,8 +767,10 @@ const createPreviewUrlFromFile = async (file) => {
       return { src: passthroughUrl, urls: [passthroughUrl] };
     }
     const scale = MAX_PREVIEW_DIMENSION / maxSide;
-    const width = Math.round((decoded.width || 0) * scale) || MAX_PREVIEW_DIMENSION;
-    const height = Math.round((decoded.height || 0) * scale) || MAX_PREVIEW_DIMENSION;
+    const width =
+      Math.round((decoded.width || 0) * scale) || MAX_PREVIEW_DIMENSION;
+    const height =
+      Math.round((decoded.height || 0) * scale) || MAX_PREVIEW_DIMENSION;
     let canvas = null;
     if (typeof OffscreenCanvas !== "undefined") {
       canvas = new OffscreenCanvas(width, height);
@@ -821,13 +858,13 @@ const resolveDerivativesHandle = async (rootHandle) => {
     return discovered;
   }
   throw new Error(
-    "Could not locate a Photos Library resources/derivatives folder inside that selection."
+    "Could not locate a Photos Library resources/derivatives folder inside that selection.",
   );
 };
 
 const collectPhotosFromHandle = async (
   dirHandle,
-  limit = MAX_DYNAMIC_PHOTOS
+  limit = MAX_DYNAMIC_PHOTOS,
 ) => {
   const photos = [];
   const objectUrls = [];
@@ -843,7 +880,7 @@ const collectPhotosFromHandle = async (
           src,
           caption: file.name,
           takenOn,
-          lastModified: file.lastModified
+          lastModified: file.lastModified,
         });
         if (urls?.length) {
           objectUrls.push(...urls);
@@ -862,25 +899,24 @@ const requestPhotosLibraryAccess = async () => {
   if (!window.showDirectoryPicker) {
     updateLibraryStatus(
       "Your browser does not support folder access. Try Chrome or Edge.",
-      { isError: true }
+      { isError: true },
     );
     setPhotosPermissionState("error");
     return;
   }
   try {
     updateLibraryStatus(
-      "Choose your Photos Library package to grant read-only access..."
+      "Choose your Photos Library package to grant read-only access...",
     );
     const rootHandle = await window.showDirectoryPicker({ mode: "read" });
     const derivativesHandle = await resolveDerivativesHandle(rootHandle);
     updateLibraryStatus("Loading photos from library...");
-    const { photos, objectUrls } = await collectPhotosFromHandle(
-      derivativesHandle
-    );
+    const { photos, objectUrls } =
+      await collectPhotosFromHandle(derivativesHandle);
     if (!photos.length) {
       updateLibraryStatus(
         "No images were found in the selected folder. Please try another directory.",
-        { isError: true }
+        { isError: true },
       );
       if (photosPermissionState !== "error") {
         setPhotosPermissionState("pending");
@@ -897,7 +933,7 @@ const requestPhotosLibraryAccess = async () => {
     console.error("Unable to access Photos Library:", error);
     updateLibraryStatus(
       "Unable to access that folder. Ensure it is your Photos Library and retry.",
-      { isError: true }
+      { isError: true },
     );
     setPhotosPermissionState("error");
   }
@@ -908,7 +944,7 @@ if (!window.showDirectoryPicker && selectLibraryButton) {
   selectLibraryButton.disabled = true;
   updateLibraryStatus(
     "Folder access requires a Chromium-based browser (Chrome, Edge, Arc, etc.).",
-    { isError: true }
+    { isError: true },
   );
   setPhotosPermissionState("error");
 }
@@ -921,12 +957,16 @@ const mirrorLandmarks = (landmarks) => {
   }
   return landmarks.map((landmark) => ({
     ...landmark,
-    x: 1 - landmark.x
+    x: 1 - landmark.x,
   }));
 };
 
 const computeThumbIndexMetrics = (landmarks) => {
-  if (!landmarks || !landmarks[THUMB_TIP_INDEX] || !landmarks[INDEX_TIP_INDEX]) {
+  if (
+    !landmarks ||
+    !landmarks[THUMB_TIP_INDEX] ||
+    !landmarks[INDEX_TIP_INDEX]
+  ) {
     return null;
   }
 
@@ -934,24 +974,24 @@ const computeThumbIndexMetrics = (landmarks) => {
   const indexTip = landmarks[INDEX_TIP_INDEX];
   const start = {
     x: thumbTip.x * canvasElement.width,
-    y: thumbTip.y * canvasElement.height
+    y: thumbTip.y * canvasElement.height,
   };
   const end = {
     x: indexTip.x * canvasElement.width,
-    y: indexTip.y * canvasElement.height
+    y: indexTip.y * canvasElement.height,
   };
 
   const distancePx = Math.hypot(end.x - start.x, end.y - start.y);
   const midPoint = {
     x: (start.x + end.x) / 2,
-    y: (start.y + end.y) / 2
+    y: (start.y + end.y) / 2,
   };
 
   return {
     start,
     end,
     midPoint,
-    distancePx
+    distancePx,
   };
 };
 
@@ -983,7 +1023,7 @@ const drawThumbIndexLabel = (metrics) => {
     : "Thumb-Index";
   const pinchSuffix = metrics.isPinched ? " (pinched)" : "";
   const label = `${handednessLabel}: ${metrics.distancePx.toFixed(
-    1
+    1,
   )} px${pinchSuffix}`;
   const padding = 8;
   const backgroundHeight = 28;
@@ -998,11 +1038,44 @@ const drawThumbIndexLabel = (metrics) => {
   const backgroundY = textY - backgroundHeight / 2;
 
   canvasCtx.fillStyle = "rgba(0, 0, 0, 0.6)";
-  canvasCtx.fillRect(backgroundX, backgroundY, backgroundWidth, backgroundHeight);
+  canvasCtx.fillRect(
+    backgroundX,
+    backgroundY,
+    backgroundWidth,
+    backgroundHeight,
+  );
 
   canvasCtx.fillStyle = "#FFD60A";
   canvasCtx.fillText(label, metrics.midPoint.x - textMetrics.width / 2, textY);
   canvasCtx.restore();
+};
+
+const updateInteractivity = (metrics) => {
+  if (!metrics) {
+    return;
+  }
+
+  // On the left hand update the score of the first slider
+  // Score usually is between 50 - 300 for min/max so we're just hardcoding it
+  if (metrics.handedness == "Left") {
+    const distancePercentage = Math.min(metrics.distancePx, 300) / 300;
+    const newVal = Math.floor(timelineSlider.max * distancePercentage);
+    // Not sure if this is the best way to do it
+    activeTimelineIndex = newVal;
+    timelineSlider.value = newVal;
+    updateSelectedDatePanel();
+    scheduleTimelineRender();
+  }
+
+  if (metrics.handedness == "Right") {
+    const photoPanel = document.querySelector(".selected-date-panel");
+    const distancePercentage = Math.min(metrics.distancePx, 300) / 300;
+    // The client height is the hieght of the view, so we don't want to set the max
+    // past that otherwise we'll get some empty space
+    const scrollableAmount = photoPanel.scrollHeight - photoPanel.clientHeight;
+    const targetScrollTop = scrollableAmount * distancePercentage;
+    photoPanel.scrollTop = targetScrollTop;
+  }
 };
 
 const drawPinchedHandsConnector = (firstPinch, secondPinch) => {
@@ -1020,17 +1093,13 @@ const drawPinchedHandsConnector = (firstPinch, secondPinch) => {
   canvasCtx.restore();
 };
 
-const drawPinchedHandsDistanceLabel = (
-  firstPinch,
-  secondPinch,
-  distancePx
-) => {
+const drawPinchedHandsDistanceLabel = (firstPinch, secondPinch, distancePx) => {
   if (!firstPinch || !secondPinch || typeof distancePx !== "number") {
     return;
   }
   const midPoint = {
     x: (firstPinch.midPoint.x + secondPinch.midPoint.x) / 2,
-    y: (firstPinch.midPoint.y + secondPinch.midPoint.y) / 2
+    y: (firstPinch.midPoint.y + secondPinch.midPoint.y) / 2,
   };
   const label = `Hands Gap: ${distancePx.toFixed(1)} px`;
   const padding = 10;
@@ -1045,7 +1114,12 @@ const drawPinchedHandsDistanceLabel = (
   const backgroundY = midPoint.y - backgroundHeight / 2;
 
   canvasCtx.fillStyle = "rgba(0, 0, 0, 0.7)";
-  canvasCtx.fillRect(backgroundX, backgroundY, backgroundWidth, backgroundHeight);
+  canvasCtx.fillRect(
+    backgroundX,
+    backgroundY,
+    backgroundWidth,
+    backgroundHeight,
+  );
   canvasCtx.fillStyle = "#34C759";
   canvasCtx.fillText(label, midPoint.x - textMetrics.width / 2, midPoint.y);
   canvasCtx.restore();
@@ -1076,21 +1150,28 @@ const buildGestureSummaries = (recognizerResults) => {
     .filter(Boolean);
 };
 
+function sleep(ms) {
+  var start = new Date().getTime(),
+    expire = start + ms;
+  while (new Date().getTime() < expire) {}
+  return;
+}
+
 // Before we can use HandLandmarker class we must wait for it to finish
 // loading. Machine Learning models can be large and take a moment to
 // get everything needed to run.
 const createGestureRecognizer = async () => {
   const vision = await FilesetResolver.forVisionTasks(
-    "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm"
+    "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm",
   );
   gestureRecognizer = await GestureRecognizer.createFromOptions(vision, {
     baseOptions: {
       modelAssetPath:
         "https://storage.googleapis.com/mediapipe-models/gesture_recognizer/gesture_recognizer/float16/1/gesture_recognizer.task",
-      delegate: "GPU"
+      delegate: "GPU",
     },
     runningMode: runningMode,
-    numHands: MAX_HANDS
+    numHands: MAX_HANDS,
   });
   demosSection.classList.remove("invisible");
 };
@@ -1134,7 +1215,7 @@ async function handleClick(event) {
     runningMode = "IMAGE";
     await gestureRecognizer.setOptions({
       runningMode: "IMAGE",
-      numHands: MAX_HANDS
+      numHands: MAX_HANDS,
     });
   }
   // Remove all previous landmarks
@@ -1185,12 +1266,12 @@ async function handleClick(event) {
         GestureRecognizer.HAND_CONNECTIONS,
         {
           color: "#00FF00",
-          lineWidth: 5
-        }
+          lineWidth: 5,
+        },
       );
       drawingUtils.drawLandmarks(landmarks, {
         color: "#FF0000",
-        lineWidth: 1
+        lineWidth: 1,
       });
     }
   }
@@ -1207,7 +1288,7 @@ const gestureOutput = document.getElementById("gesture_output");
 const permissionNotice = document.getElementById("permissionNotice");
 const permissionMessage = document.getElementById("permissionMessage");
 const requestPermissionButton = document.getElementById(
-  "requestPermissionButton"
+  "requestPermissionButton",
 );
 const PERMISSION_REQUIRED_MESSAGE =
   "Camera permission is required for hand gesture recognition. Please allow access so predictions can start.";
@@ -1224,7 +1305,7 @@ if (requestPermissionButton) {
 
 function showPermissionNotice(
   message = PERMISSION_REQUIRED_MESSAGE,
-  { showButton = true } = {}
+  { showButton = true } = {},
 ) {
   if (permissionMessage && message) {
     permissionMessage.innerText = message;
@@ -1277,7 +1358,7 @@ if (hasGetUserMedia()) {
 } else {
   console.warn("getUserMedia() is not supported by your browser");
   showPermissionNotice(
-    "This browser does not support camera access required for gesture recognition."
+    "This browser does not support camera access required for gesture recognition.",
   );
   if (requestPermissionButton) {
     requestPermissionButton.classList.add("hidden");
@@ -1351,7 +1432,7 @@ function requestCameraAccess(options = {}) {
 
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
     showPermissionNotice(
-      "Camera access is unavailable in this browser. Please switch to a supported browser to continue."
+      "Camera access is unavailable in this browser. Please switch to a supported browser to continue.",
     );
     return;
   }
@@ -1362,7 +1443,7 @@ function requestCameraAccess(options = {}) {
   }
 
   const constraints = {
-    video: true
+    video: true,
   };
 
   navigator.mediaDevices
@@ -1412,7 +1493,7 @@ async function predictWebcam() {
     runningMode = "VIDEO";
     await gestureRecognizer.setOptions({
       runningMode: "VIDEO",
-      numHands: MAX_HANDS
+      numHands: MAX_HANDS,
     });
   }
   let nowInMs = Date.now();
@@ -1444,6 +1525,7 @@ async function predictWebcam() {
 
   if (results.landmarks) {
     const drawingUtils = new DrawingUtils(canvasCtx);
+    // Process each hand
     results.landmarks.forEach((landmarks, index) => {
       const mirroredLandmarks = mirrorLandmarks(landmarks);
       drawingUtils.drawConnectors(
@@ -1451,12 +1533,12 @@ async function predictWebcam() {
         GestureRecognizer.HAND_CONNECTIONS,
         {
           color: "#00FF00",
-          lineWidth: 5
-        }
+          lineWidth: 5,
+        },
       );
       drawingUtils.drawLandmarks(mirroredLandmarks, {
         color: "#FF0000",
-        lineWidth: 2
+        lineWidth: 2,
       });
       const metrics = computeThumbIndexMetrics(mirroredLandmarks);
       if (metrics) {
@@ -1464,7 +1546,7 @@ async function predictWebcam() {
           results.handednesses?.[index]?.[0]?.displayName || "Unknown";
         const metricDetails = {
           ...metrics,
-          handedness: flipHandedness(handedness)
+          handedness: flipHandedness(handedness),
         };
         const pinched = isThumbIndexPinched(metricDetails);
         metricDetails.isPinched = pinched;
@@ -1482,12 +1564,17 @@ async function predictWebcam() {
     drawPinchedHandsConnector(firstPinch, secondPinch);
     pinchedHandsDistance = Math.hypot(
       secondPinch.midPoint.x - firstPinch.midPoint.x,
-      secondPinch.midPoint.y - firstPinch.midPoint.y
+      secondPinch.midPoint.y - firstPinch.midPoint.y,
     );
-    drawPinchedHandsDistanceLabel(firstPinch, secondPinch, pinchedHandsDistance);
+    drawPinchedHandsDistanceLabel(
+      firstPinch,
+      secondPinch,
+      pinchedHandsDistance,
+    );
   }
   thumbIndexMetrics.forEach((metrics) => {
     drawThumbIndexLabel(metrics);
+    updateInteractivity(metrics);
   });
   const summaries = buildGestureSummaries(results);
   const infoLines = [...summaries];
