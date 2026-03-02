@@ -988,6 +988,10 @@ body.intro-open .jar-photo {
   max-width: 640px;
 }
 
+.map-control--pan-y {
+  justify-self: end;
+}
+
 .map-control label {
   display: flex;
   flex-direction: column;
@@ -1003,6 +1007,13 @@ body.intro-open .jar-photo {
   display: inline-block;
   font-variant-numeric: tabular-nums;
   color: var(--accent);
+}
+
+.map-control--zoom {
+  grid-column: 1 / -1;
+  margin-top: 0.5rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.15);
 }
 
 .map-status {
