@@ -16,6 +16,19 @@ import {
   FilesetResolver,
   DrawingUtils,
 } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3";
+import * as L from "leaflet";
+import exifr from "exifr";
+
+import "leaflet/dist/leaflet.css";
+import markerIconRetinaUrl from "leaflet/dist/images/marker-icon-2x.png";
+import markerIconUrl from "leaflet/dist/images/marker-icon.png";
+import markerShadowUrl from "leaflet/dist/images/marker-shadow.png";
+
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: markerIconRetinaUrl,
+  iconUrl: markerIconUrl,
+  shadowUrl: markerShadowUrl,
+});
 
 const demosSection = document.getElementById("demos");
 const selectLibraryButton = document.getElementById("selectLibrary");
@@ -28,6 +41,16 @@ const timelineStatus = document.getElementById("canvasStatus");
 const selectedDateHeading = document.getElementById("selectedDateHeading");
 const selectedDateList = document.getElementById("datePhotoList");
 const selectedDatePanel = document.querySelector(".selected-date-panel");
+const experienceTabButtons = document.querySelectorAll("[data-tab-target]");
+const experienceTabPanels = document.querySelectorAll("[data-tab-panel]");
+const mapElement = document.getElementById("photoMap");
+const mapStatus = document.getElementById("mapStatus");
+const mapPanXSlider = document.getElementById("mapPanX");
+const mapPanYSlider = document.getElementById("mapPanY");
+const mapZoomSlider = document.getElementById("mapZoom");
+const mapPanXLabel = document.getElementById("mapPanXValue");
+const mapPanYLabel = document.getElementById("mapPanYValue");
+const mapZoomLabel = document.getElementById("mapZoomValue");
 const orbitDial = document.getElementById("orbitDial");
 const orbitDialValue = document.getElementById("orbitDialValue");
 const glowDial = document.getElementById("glowDial");
@@ -43,6 +66,8 @@ const cameraPermissionSuccess = document.getElementById(
 const photosPermissionSuccess = document.getElementById(
   "photosPermissionSuccess",
 );
+const video = document.getElementById("webcam");
+const canvasElement = document.getElementById("output_canvas");
 let gestureRecognizer;
 let runningMode = "IMAGE";
 let webcamRunning = false;
@@ -62,11 +87,41 @@ let activeTimelineIndex = 0;
 let timelineCanvasWidth = 0;
 let timelineCanvasHeight = 360;
 let timelineAnimationFrame = null;
+let photoMapInstance = null;
+let mapPinsLayer = null;
+let geoTaggedPhotos = [];
+const MAP_DEFAULT_CENTER = { lat: 39.5, lng: -98.35 };
+const INITIAL_MAP_ZOOM = Number(mapZoomSlider?.value);
+const MAP_DEFAULT_ZOOM = Number.isFinite(INITIAL_MAP_ZOOM)
+  ? INITIAL_MAP_ZOOM
+  : 7;
+const EXPERIENCE_TAB_KEYS = ["canvas", "map"];
+const MAP_MAX_LAT_OFFSET = 70;
+const MAP_MAX_LON_OFFSET = 180;
+const MAP_TILE_LAYER_URL = "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
+const MAP_TILE_ATTRIBUTION =
+  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
+const MAP_POPUP_MAX_WIDTH = 260;
+let mapAnchorCenter = { ...MAP_DEFAULT_CENTER };
+let activeExperienceTab = "canvas";
 const bucketThumbnailCache = new Map();
 const dialSettings = {
   orbitHeight: orbitDial ? Number(orbitDial.value) : 60,
   glowStrength: glowDial ? Number(glowDial.value) : 70,
 };
+const mapPanSession = {
+  active: false,
+  startPoint: null,
+  lastDelta: { x: 0, y: 0 },
+};
+const dualPinchZoomSession = {
+  active: false,
+  initialGap: null,
+  initialZoom: null,
+};
+const isExperienceTab = (tab) => EXPERIENCE_TAB_KEYS.includes(tab);
+const isCanvasTabActive = () => activeExperienceTab === "canvas";
+const isMapTabActive = () => activeExperienceTab === "map";
 const STAR_COUNT = 85;
 const starField = Array.from({ length: STAR_COUNT }, () => ({
   x: Math.random(),
@@ -181,8 +236,58 @@ const setPhotosPermissionState = (state) => {
   togglePermissionSuccess(photosPermissionSuccess, granted);
 };
 
+const syncExperienceTabs = ({ didChange = false } = {}) => {
+  experienceTabButtons.forEach((button) => {
+    const targetTab = button?.dataset?.tabTarget || "canvas";
+    const isActive = targetTab === activeExperienceTab;
+    button.classList.toggle("is-active", isActive);
+    button.setAttribute("aria-selected", isActive ? "true" : "false");
+    button.setAttribute("tabindex", isActive ? "0" : "-1");
+  });
+  experienceTabPanels.forEach((panel) => {
+    const panelKey = panel?.dataset?.tabPanel || "canvas";
+    const isActive = panelKey === activeExperienceTab;
+    panel.classList.toggle("is-active", isActive);
+    panel.hidden = !isActive;
+  });
+  if (!didChange) {
+    return;
+  }
+  if (isCanvasTabActive()) {
+    resetMapPanSession();
+    resetDualPinchZoomSession();
+    scheduleTimelineRender();
+  } else if (isMapTabActive()) {
+    initializePhotoMap();
+    refreshPhotoMap();
+    window.setTimeout(() => {
+      photoMapInstance?.invalidateSize();
+    }, 0);
+  }
+};
+
+const setExperienceTab = (tab) => {
+  if (!isExperienceTab(tab)) {
+    return;
+  }
+  const didChange = tab !== activeExperienceTab;
+  activeExperienceTab = tab;
+  syncExperienceTabs({ didChange });
+};
+
+experienceTabButtons.forEach((button) => {
+  button?.addEventListener("click", () => {
+    const target = button?.dataset?.tabTarget || "canvas";
+    setExperienceTab(target);
+  });
+});
+
 setCameraPermissionState("pending");
 setPhotosPermissionState("pending");
+syncExperienceTabs();
+enableMapControls(false);
+updateMapControlOutputs();
+updateMapStatus("Grant Photos access to populate the map.");
 
 const MAX_DATE_PREVIEW_PHOTOS = 6;
 const TIMELINE_AXIS_PADDING_X = 60;
@@ -193,6 +298,198 @@ const updateDialOutput = (element, value, suffix = "%") => {
   const number = Number.isFinite(value) ? Math.round(value) : 0;
   element.innerText = `${number}${suffix}`;
 };
+
+function updateMapStatus(message, { isError = false } = {}) {
+  if (!mapStatus) {
+    return;
+  }
+  mapStatus.innerText = message;
+  mapStatus.classList.toggle("map-status--error", Boolean(isError));
+}
+
+function enableMapControls(enable = false) {
+  [mapPanXSlider, mapPanYSlider, mapZoomSlider].forEach((slider) => {
+    if (!slider) return;
+    slider.disabled = !enable;
+  });
+}
+
+const clamp = (value, min, max) => {
+  if (!Number.isFinite(value)) {
+    return min;
+  }
+  if (value < min) {
+    return min;
+  }
+  if (value > max) {
+    return max;
+  }
+  return value;
+};
+
+const normalizeLatitude = (value) => clamp(value ?? 0, -85, 85);
+
+const normalizeLongitude = (value) => {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+  let next = value;
+  while (next > 180) {
+    next -= 360;
+  }
+  while (next < -180) {
+    next += 360;
+  }
+  return next;
+};
+
+function toDegreeLabel(value) {
+  if (!Number.isFinite(value)) {
+    return "0°";
+  }
+  const formatted = value.toFixed(1);
+  return `${formatted}°`;
+}
+
+const escapeHtml = (value = "") =>
+  String(value).replace(/[&<>"']/g, (char) => {
+    switch (char) {
+      case "&":
+        return "&amp;";
+      case "<":
+        return "&lt;";
+      case ">":
+        return "&gt;";
+      case '"':
+        return "&quot;";
+      case "'":
+        return "&#39;";
+      default:
+        return char;
+    }
+  });
+
+function updateMapControlOutputs() {
+  if (mapPanXSlider && mapPanXLabel) {
+    const panX =
+      (Number(mapPanXSlider.value) / 100 || 0) * MAP_MAX_LON_OFFSET;
+    mapPanXLabel.innerText = toDegreeLabel(panX);
+  }
+  if (mapPanYSlider && mapPanYLabel) {
+    const panY =
+      (Number(mapPanYSlider.value) / 100 || 0) * MAP_MAX_LAT_OFFSET;
+    mapPanYLabel.innerText = toDegreeLabel(panY);
+  }
+  if (mapZoomSlider && mapZoomLabel) {
+    const zoom = Number(mapZoomSlider.value) || MAP_DEFAULT_ZOOM;
+    mapZoomLabel.innerText = `Level ${zoom}`;
+  }
+}
+
+function resetMapPanSession() {
+  mapPanSession.active = false;
+  mapPanSession.startPoint = null;
+  mapPanSession.lastDelta = { x: 0, y: 0 };
+}
+
+function handleMapPanGesture(metrics) {
+  if (!metrics?.midPoint) {
+    return;
+  }
+  initializePhotoMap();
+  if (!photoMapInstance || !canvasElement) {
+    return;
+  }
+  if (!mapPanSession.active) {
+    mapPanSession.active = true;
+    mapPanSession.startPoint = {
+      x: metrics.midPoint.x,
+      y: metrics.midPoint.y,
+    };
+    mapPanSession.lastDelta = { x: 0, y: 0 };
+    return;
+  }
+  const mapSize = photoMapInstance.getSize();
+  if (!mapSize) {
+    return;
+  }
+  const canvasWidth = canvasElement.width || 1;
+  const canvasHeight = canvasElement.height || 1;
+  const deltaX = metrics.midPoint.x - mapPanSession.startPoint.x;
+  const deltaY = metrics.midPoint.y - mapPanSession.startPoint.y;
+  const scaleX = mapSize.x / canvasWidth;
+  const scaleY = mapSize.y / canvasHeight;
+  const scaledDeltaX = deltaX * scaleX;
+  const scaledDeltaY = deltaY * scaleY;
+  const incrementalX = scaledDeltaX - mapPanSession.lastDelta.x;
+  const incrementalY = scaledDeltaY - mapPanSession.lastDelta.y;
+  if (Math.abs(incrementalX) > 0.25 || Math.abs(incrementalY) > 0.25) {
+    photoMapInstance.panBy([-incrementalX, -incrementalY], {
+      animate: false,
+    });
+    mapPanSession.lastDelta = {
+      x: scaledDeltaX,
+      y: scaledDeltaY,
+    };
+    syncSlidersToMapView();
+  }
+}
+
+function resetDualPinchZoomSession() {
+  dualPinchZoomSession.active = false;
+  dualPinchZoomSession.initialGap = null;
+  dualPinchZoomSession.initialZoom = null;
+}
+
+function handleDualPinchZoom(pinchedList, distance) {
+  const hasValidPinch =
+    Array.isArray(pinchedList) &&
+    pinchedList.length >= 2 &&
+    Number.isFinite(distance);
+  if (
+    !isMapTabActive() ||
+    !photoMapInstance ||
+    !hasValidPinch ||
+    !pinchedList.some((metric) => metric?.handedness === "Right")
+  ) {
+    resetDualPinchZoomSession();
+    return;
+  }
+  initializePhotoMap();
+  if (!photoMapInstance) {
+    return;
+  }
+  if (!dualPinchZoomSession.active) {
+    dualPinchZoomSession.active = true;
+    dualPinchZoomSession.initialGap = distance;
+    dualPinchZoomSession.initialZoom =
+      photoMapInstance.getZoom?.() ?? MAP_DEFAULT_ZOOM;
+    return;
+  }
+  if (!dualPinchZoomSession.initialGap) {
+    dualPinchZoomSession.initialGap = distance;
+    return;
+  }
+  const ratio = distance / dualPinchZoomSession.initialGap;
+  if (!Number.isFinite(ratio) || ratio <= 0) {
+    return;
+  }
+  const zoomDelta = Math.log2(ratio);
+  const startingZoom =
+    dualPinchZoomSession.initialZoom ??
+    photoMapInstance.getZoom?.() ??
+    MAP_DEFAULT_ZOOM;
+  const minZoom = photoMapInstance.getMinZoom?.() ?? 2;
+  const maxZoom = photoMapInstance.getMaxZoom?.() ?? 19;
+  const nextZoom = clamp(startingZoom + zoomDelta, minZoom, maxZoom);
+  if (Number.isFinite(nextZoom)) {
+    photoMapInstance.setZoom(nextZoom, { animate: false });
+    if (mapZoomSlider) {
+      mapZoomSlider.value = String(Math.round(nextZoom));
+    }
+    updateMapControlOutputs();
+  }
+}
 
 const pruneBucketThumbnails = (validKeys = []) => {
   const allow = new Set(validKeys);
@@ -387,6 +684,206 @@ const updateSelectedDatePanel = () => {
     moreItem.innerText = `+${extra} more ${extra === 1 ? "photo" : "photos"} from this day`;
     selectedDateList.appendChild(moreItem);
   }
+};
+
+const resetMapSliders = () => {
+  if (mapPanXSlider) {
+    mapPanXSlider.value = 0;
+  }
+  if (mapPanYSlider) {
+    mapPanYSlider.value = 0;
+  }
+  if (mapZoomSlider) {
+    mapZoomSlider.value = MAP_DEFAULT_ZOOM;
+  }
+  updateMapControlOutputs();
+};
+
+const setMapAnchorCenter = (center = MAP_DEFAULT_CENTER) => {
+  const nextCenter = {
+    lat: normalizeLatitude(center?.lat ?? MAP_DEFAULT_CENTER.lat),
+    lng: normalizeLongitude(center?.lng ?? MAP_DEFAULT_CENTER.lng),
+  };
+  mapAnchorCenter = nextCenter;
+  resetMapSliders();
+};
+
+const initializePhotoMap = () => {
+  if (typeof window === "undefined" || !mapElement || photoMapInstance) {
+    return;
+  }
+  photoMapInstance = L.map(mapElement, {
+    zoomControl: true,
+    attributionControl: true,
+    worldCopyJump: true,
+    preferCanvas: true,
+  }).setView(
+    [MAP_DEFAULT_CENTER.lat, MAP_DEFAULT_CENTER.lng],
+    MAP_DEFAULT_ZOOM,
+  );
+  L.tileLayer(MAP_TILE_LAYER_URL, {
+    attribution: MAP_TILE_ATTRIBUTION,
+    maxZoom: 19,
+  }).addTo(photoMapInstance);
+  mapPinsLayer = L.layerGroup().addTo(photoMapInstance);
+  photoMapInstance.on("moveend", () => {
+    syncSlidersToMapView();
+  });
+  photoMapInstance.on("zoomend", () => {
+    syncSlidersToMapView();
+  });
+  window.setTimeout(() => {
+    photoMapInstance?.invalidateSize();
+  }, 0);
+};
+
+const computeTargetLongitude = () => {
+  const sliderValue = Number(mapPanXSlider?.value) || 0;
+  const delta = (sliderValue / 100) * MAP_MAX_LON_OFFSET;
+  return normalizeLongitude(mapAnchorCenter.lng + delta);
+};
+
+const computeTargetLatitude = () => {
+  const sliderValue = Number(mapPanYSlider?.value) || 0;
+  const delta = (sliderValue / 100) * MAP_MAX_LAT_OFFSET;
+  return normalizeLatitude(mapAnchorCenter.lat + delta);
+};
+
+const syncSlidersToMapView = () => {
+  if (!photoMapInstance) {
+    return;
+  }
+  const center = photoMapInstance.getCenter();
+  const zoom = photoMapInstance.getZoom();
+  if (mapPanXSlider) {
+    const lonDelta = clamp(
+      center.lng - mapAnchorCenter.lng,
+      -MAP_MAX_LON_OFFSET,
+      MAP_MAX_LON_OFFSET,
+    );
+    mapPanXSlider.value = String(
+      Math.round((lonDelta / MAP_MAX_LON_OFFSET) * 100),
+    );
+  }
+  if (mapPanYSlider) {
+    const latDelta = clamp(
+      center.lat - mapAnchorCenter.lat,
+      -MAP_MAX_LAT_OFFSET,
+      MAP_MAX_LAT_OFFSET,
+    );
+    mapPanYSlider.value = String(
+      Math.round((latDelta / MAP_MAX_LAT_OFFSET) * 100),
+    );
+  }
+  if (mapZoomSlider) {
+    mapZoomSlider.value = String(Math.round(zoom));
+  }
+  updateMapControlOutputs();
+};
+
+const applyMapViewFromControls = () => {
+  initializePhotoMap();
+  if (!photoMapInstance) {
+    return;
+  }
+  const targetLat = computeTargetLatitude();
+  const targetLng = computeTargetLongitude();
+  const targetZoom = Number(mapZoomSlider?.value) || MAP_DEFAULT_ZOOM;
+  photoMapInstance.setView([targetLat, targetLng], targetZoom, {
+    animate: false,
+  });
+};
+
+const createMapPopupContent = (photo) => {
+  if (!photo) {
+    return "";
+  }
+  const caption = escapeHtml(photo.caption || "Untitled photo");
+  const dateLabel = escapeHtml(photo.dateLabel || "");
+  const coordsLabel =
+    Number.isFinite(photo.latitude) && Number.isFinite(photo.longitude)
+      ? `${photo.latitude.toFixed(4)}°, ${photo.longitude.toFixed(4)}°`
+      : "";
+  const imageMarkup = photo.src
+    ? `<img src="${photo.src}" alt="${caption}" loading="lazy">`
+    : "";
+  const dateMarkup = dateLabel
+    ? `<p class="map-popup__date">${dateLabel}</p>`
+    : "";
+  const coordsMarkup = coordsLabel
+    ? `<p class="map-popup__coords">${coordsLabel}</p>`
+    : "";
+  return `
+    <div class="map-popup">
+      ${imageMarkup}
+      <div class="map-popup__meta">
+        <strong>${caption}</strong>
+        ${dateMarkup}
+        ${coordsMarkup}
+      </div>
+    </div>
+  `;
+};
+
+const refreshPhotoMap = () => {
+  initializePhotoMap();
+  if (!photoMapInstance || !mapPinsLayer) {
+    updateMapStatus("Map could not be initialized.", { isError: true });
+    return;
+  }
+  mapPinsLayer.clearLayers();
+  if (!currentPhotoSources.length) {
+    updateMapStatus("Grant Photos access to populate the map.");
+    enableMapControls(false);
+    return;
+  }
+  if (!geoTaggedPhotos.length) {
+    updateMapStatus(
+      "No geotagged images found. Add GPS-enabled photos to see pins here.",
+    );
+    enableMapControls(false);
+    return;
+  }
+  enableMapControls(true);
+  geoTaggedPhotos.forEach((photo) => {
+    if (!Number.isFinite(photo.latitude) || !Number.isFinite(photo.longitude)) {
+      return;
+    }
+    const marker = L.marker([photo.latitude, photo.longitude]);
+    const popup = createMapPopupContent(photo);
+    if (popup) {
+      marker.bindPopup(popup, { maxWidth: MAP_POPUP_MAX_WIDTH });
+    }
+    marker.addTo(mapPinsLayer);
+  });
+  const bounds = L.latLngBounds(
+    geoTaggedPhotos
+      .filter(
+        (photo) =>
+          Number.isFinite(photo.latitude) && Number.isFinite(photo.longitude),
+      )
+      .map((photo) => [photo.latitude, photo.longitude]),
+  );
+  if (bounds.isValid()) {
+    setMapAnchorCenter(bounds.getCenter());
+    photoMapInstance.fitBounds(bounds, {
+      padding: [40, 40],
+      animate: false,
+    });
+  } else {
+    setMapAnchorCenter(MAP_DEFAULT_CENTER);
+    photoMapInstance.setView(
+      [MAP_DEFAULT_CENTER.lat, MAP_DEFAULT_CENTER.lng],
+      MAP_DEFAULT_ZOOM,
+      { animate: false },
+    );
+  }
+  updateMapStatus(
+    `Plotted ${geoTaggedPhotos.length} geotagged photo${
+      geoTaggedPhotos.length === 1 ? "" : "s"
+    }.`,
+  );
+  syncSlidersToMapView();
 };
 
 const renderTimelineCanvas = () => {
@@ -641,7 +1138,12 @@ const setPhotoSources = (photos = [], { objectUrls = [] } = {}) => {
   } else if (photosPermissionState !== "error") {
     setPhotosPermissionState("pending");
   }
+  geoTaggedPhotos = normalizedPhotos.filter(
+    (photo) =>
+      Number.isFinite(photo.latitude) && Number.isFinite(photo.longitude),
+  );
   updateCanvasWorld(currentPhotoSources);
+  refreshPhotoMap();
 };
 
 const updateLibraryStatus = (message, { isError = false } = {}) => {
@@ -652,6 +1154,7 @@ const updateLibraryStatus = (message, { isError = false } = {}) => {
 
 syncTimelineCanvasSize();
 updateCanvasWorld(currentPhotoSources);
+refreshPhotoMap();
 
 updateLibraryStatus(
   "Link your ~/Photos/Photos Library to populate the JarView canvas.",
@@ -662,6 +1165,21 @@ timelineSlider?.addEventListener("input", (event) => {
   activeTimelineIndex = Number.isNaN(nextIndex) ? 0 : nextIndex;
   updateSelectedDatePanel();
   scheduleTimelineRender();
+});
+
+mapPanXSlider?.addEventListener("input", () => {
+  updateMapControlOutputs();
+  applyMapViewFromControls();
+});
+
+mapPanYSlider?.addEventListener("input", () => {
+  updateMapControlOutputs();
+  applyMapViewFromControls();
+});
+
+mapZoomSlider?.addEventListener("input", () => {
+  updateMapControlOutputs();
+  applyMapViewFromControls();
 });
 
 const handleDialInput = (field, outputElement) => (event) => {
@@ -688,6 +1206,9 @@ glowDial?.addEventListener(
 window.addEventListener("resize", () => {
   syncTimelineCanvasSize();
   scheduleTimelineRender();
+  if (photoMapInstance) {
+    photoMapInstance.invalidateSize();
+  }
 });
 
 const IMAGE_EXTENSIONS = [".jpg", ".jpeg", ".png", ".heic", ".heif"];
@@ -828,6 +1349,28 @@ const createPreviewUrlFromFile = async (file) => {
   }
 };
 
+const extractGpsFromFile = async (file) => {
+  if (!file) {
+    return null;
+  }
+  try {
+    const gps = await exifr.gps(file);
+    if (
+      gps &&
+      Number.isFinite(gps.latitude) &&
+      Number.isFinite(gps.longitude)
+    ) {
+      return {
+        latitude: normalizeLatitude(gps.latitude),
+        longitude: normalizeLongitude(gps.longitude),
+      };
+    }
+  } catch (error) {
+    console.warn("Unable to read GPS metadata for", file?.name, error);
+  }
+  return null;
+};
+
 const isImageFile = (filename = "") =>
   IMAGE_EXTENSIONS.some((ext) => filename.toLowerCase().endsWith(ext));
 
@@ -897,11 +1440,14 @@ const collectPhotosFromHandle = async (
         const file = await entry.getFile();
         const { src, urls } = await createPreviewUrlFromFile(file);
         const takenOn = file.lastModified ? new Date(file.lastModified) : null;
+        const gps = await extractGpsFromFile(file);
         photos.push({
           src,
           caption: file.name,
           takenOn,
           lastModified: file.lastModified,
+          latitude: gps?.latitude ?? null,
+          longitude: gps?.longitude ?? null,
         });
         if (urls?.length) {
           objectUrls.push(...urls);
@@ -1125,30 +1671,41 @@ const updateInteractivity = (metrics) => {
     return;
   }
 
-  if (
-    metrics.handedness === "Left" &&
-    timelineSlider &&
-    !timelineSlider.disabled
-  ) {
-    const sliderMax = Number(timelineSlider.max);
-    if (Number.isFinite(sliderMax) && sliderMax >= 0) {
-      const distancePercentage = Math.min(metrics.distancePx, 300) / 300;
-      const nextIndex = Math.min(
-        sliderMax,
-        Math.max(0, Math.round(sliderMax * distancePercentage)),
-      );
-      if (nextIndex !== activeTimelineIndex) {
-        activeTimelineIndex = nextIndex;
-        if (timelineSlider.value !== String(nextIndex)) {
-          timelineSlider.value = String(nextIndex);
+  if (metrics.handedness === "Left") {
+    if (isMapTabActive()) {
+      if (metrics.isPinched) {
+        handleMapPanGesture(metrics);
+      } else if (mapPanSession.active) {
+        resetMapPanSession();
+      }
+      return;
+    }
+    resetMapPanSession();
+    if (timelineSlider && !timelineSlider.disabled && isCanvasTabActive()) {
+      const sliderMax = Number(timelineSlider.max);
+      if (Number.isFinite(sliderMax) && sliderMax >= 0) {
+        const distancePercentage = Math.min(metrics.distancePx, 300) / 300;
+        const nextIndex = Math.min(
+          sliderMax,
+          Math.max(0, Math.round(sliderMax * distancePercentage)),
+        );
+        if (nextIndex !== activeTimelineIndex) {
+          activeTimelineIndex = nextIndex;
+          if (timelineSlider.value !== String(nextIndex)) {
+            timelineSlider.value = String(nextIndex);
+          }
+          updateSelectedDatePanel();
+          scheduleTimelineRender();
         }
-        updateSelectedDatePanel();
-        scheduleTimelineRender();
       }
     }
+    return;
   }
 
   if (metrics.handedness === "Right") {
+    if (isMapTabActive()) {
+      return;
+    }
     if (!selectedDatePanel) {
       return;
     }
@@ -1457,8 +2014,6 @@ async function handleClick(event) {
 // Demo 2: Continuously grab image from webcam stream and detect it.
 ********************************************************************/
 
-const video = document.getElementById("webcam");
-const canvasElement = document.getElementById("output_canvas");
 const canvasCtx = canvasElement.getContext("2d");
 const gestureOutput = document.getElementById("gesture_output");
 const permissionNotice = document.getElementById("permissionNotice");
@@ -1774,6 +2329,9 @@ async function predictWebcam() {
       secondPinch,
       pinchedHandsDistance,
     );
+    handleDualPinchZoom(pinchedMetrics, pinchedHandsDistance);
+  } else {
+    resetDualPinchZoomSession();
   }
   thumbIndexMetrics.forEach((metrics) => {
     drawThumbIndexLabel(metrics);

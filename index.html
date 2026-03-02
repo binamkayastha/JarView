@@ -100,69 +100,119 @@ limitations under the License. -->
       </ol>
     </section>
 
-    <section id="canvasWorld" class="canvas-world" aria-live="polite">
-      <div class="section-header">
-        <div>
-          <h2>Canvas World: Photos Through Time</h2>
-          <p>Every loaded photo is projected onto a temporal canvas. Drag through the timeline to focus on a specific day.</p>
-        </div>
-        <div class="canvas-controls">
-          <div class="focus-control">
-            <label for="dateSlider">
-              Focus date
-              <input type="range" id="dateSlider" min="0" max="0" value="0" disabled>
-            </label>
-            <output id="dateSliderLabel" for="dateSlider">No date selected</output>
+    <section class="experience-layout" aria-label="JarView exploration modes">
+      <section id="demos" class="gesture-panel invisible" aria-live="polite">
+        <div class="section-header compact">
+          <div>
+            <h3>Gesture Lab</h3>
+            <p>Keep your hands in frame to pinch, pan, or frame your highlight while watching the canvas react in real time.</p>
           </div>
-          <div class="dial-controls" aria-live="polite">
-            <div class="dial-control">
-              <div class="dial-control__label">
-                <span>Orbit Height</span>
-                <output id="orbitDialValue" for="orbitDial">60%</output>
+        </div>
+        <ol class="gesture-panel__steps">
+          <li>Once camera access is granted, the live preview appears automatically next to the canvas.</li>
+          <li>Hold your hand 1-2 feet away and keep the center of your palm visible.</li>
+          <li>Pinch to scrub the timeline or hold an open palm to highlight a particular day.</li>
+        </ol>
+        <div id="liveView" class="videoView">
+          <div class="video-stage">
+            <video id="webcam" autoplay playsinline></video>
+            <canvas class="output_canvas" id="output_canvas" width="1280" height="720"></canvas>
+          </div>
+          <div id="gesture_output" class="gesture-insights" aria-live="polite" hidden></div>
+        </div>
+      </section>
+      <div class="experience-main">
+        <section class="experience-tabs">
+          <div class="tab-header" role="tablist">
+            <button class="tab-button is-active" type="button" role="tab" aria-selected="true"
+              aria-controls="canvasWorld" data-tab-target="canvas">
+              Timeline
+            </button>
+            <button class="tab-button" type="button" role="tab" aria-selected="false" aria-controls="mapWorld"
+              data-tab-target="map" tabindex="-1">
+              Map
+            </button>
+          </div>
+          <div class="tab-panels">
+            <div class="tab-panel is-active" data-tab-panel="canvas">
+              <section id="canvasWorld" class="canvas-world" aria-live="polite">
+                <div class="section-header">
+                  <div>
+                    <h2>Canvas World: Photos Through Time</h2>
+                    <p>Every loaded photo is projected onto a temporal canvas. Drag through the timeline to focus on a specific day.</p>
+                  </div>
+                  <div class="canvas-controls">
+                    <div class="focus-control">
+                      <label for="dateSlider">
+                        Focus date
+                        <input type="range" id="dateSlider" min="0" max="0" value="0" disabled>
+                      </label>
+                      <output id="dateSliderLabel" for="dateSlider">No date selected</output>
+                    </div>
+                <div class="dial-controls" aria-live="polite">
+                  <div class="focus-control focus-control--tight">
+                    <label for="orbitDial">
+                      Orbit height
+                      <input type="range" id="orbitDial" min="0" max="100" value="60" aria-label="Orbit height dial">
+                    </label>
+                    <output id="orbitDialValue" for="orbitDial">60%</output>
+                  </div>
+                </div>
+                  </div>
+                </div>
+                <p id="canvasStatus" class="canvas-status">Load your Photos Library to unlock this canvas world.</p>
+                <div class="canvas-gesture-grid">
+                  <div class="canvas-column">
+                    <div class="canvas-stage">
+                      <canvas id="photoCanvas" role="img" aria-label="Visualization of photos arranged on a timeline"></canvas>
+                    </div>
+                    <div class="selected-date-panel">
+                      <h3 id="selectedDateHeading">Selected day</h3>
+                      <ul id="datePhotoList" class="date-photo-list">
+                        <li class="date-photo-list__placeholder">No photos selected yet.</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              </section>
+            </div>
+            <div class="tab-panel" data-tab-panel="map" hidden>
+              <section id="mapWorld" class="map-world" aria-live="polite">
+                <div class="section-header">
+                  <div>
+                    <h2>Map View: Photos Across The Globe</h2>
+                    <p>Once your Photos Library loads, every geotagged image is pinned to an OpenStreetMap canvas.</p>
+                  </div>
+              <div class="map-controls" aria-label="Map slider controls">
+                <div class="map-control focus-control">
+                  <label for="mapPanX">
+                    Pan left / right
+                    <input type="range" id="mapPanX" min="-100" max="100" value="0" disabled>
+                  </label>
+                  <output id="mapPanXValue" for="mapPanX">0°</output>
+                </div>
+                <div class="map-control focus-control">
+                  <label for="mapPanY">
+                    Pan up / down
+                    <input type="range" id="mapPanY" min="-100" max="100" value="0" disabled>
+                  </label>
+                  <output id="mapPanYValue" for="mapPanY">0°</output>
+                </div>
+                <div class="map-control focus-control">
+                  <label for="mapZoom">
+                    Zoom level
+                    <input type="range" id="mapZoom" min="2" max="18" value="4" disabled>
+                  </label>
+                  <output id="mapZoomValue" for="mapZoom">Level 4</output>
+                </div>
               </div>
-              <input type="range" id="orbitDial" min="0" max="100" value="60" aria-label="Orbit height dial">
+                </div>
+                <p id="mapStatus" class="map-status">Grant Photos access to populate the map.</p>
+                <div class="map-stage">
+                  <div id="photoMap" class="photo-map" role="img" aria-label="OpenStreetMap view of your photos"></div>
+                </div>
+              </section>
             </div>
-            <div class="dial-control">
-              <div class="dial-control__label">
-                <span>Neon Bloom</span>
-                <output id="glowDialValue" for="glowDial">70%</output>
-              </div>
-              <input type="range" id="glowDial" min="0" max="100" value="70" aria-label="Neon bloom dial">
-            </div>
-          </div>
-        </div>
-      </div>
-      <p id="canvasStatus" class="canvas-status">Load your Photos Library to unlock this canvas world.</p>
-      <div class="canvas-gesture-grid">
-        <div class="canvas-column">
-          <div class="canvas-stage">
-            <canvas id="photoCanvas" role="img" aria-label="Visualization of photos arranged on a timeline"></canvas>
-          </div>
-          <div class="selected-date-panel">
-            <h3 id="selectedDateHeading">Selected day</h3>
-            <ul id="datePhotoList" class="date-photo-list">
-              <li class="date-photo-list__placeholder">No photos selected yet.</li>
-            </ul>
-          </div>
-        </div>
-        <section id="demos" class="gesture-panel invisible" aria-live="polite">
-          <div class="section-header compact">
-            <div>
-              <h3>Gesture Lab</h3>
-              <p>Keep your hands in frame to pinch, pan, or frame your highlight while watching the canvas react in real time.</p>
-            </div>
-          </div>
-          <ol class="gesture-panel__steps">
-            <li>Once camera access is granted, the live preview appears automatically next to the canvas.</li>
-            <li>Hold your hand 1-2 feet away and keep the center of your palm visible.</li>
-            <li>Pinch to scrub the timeline or hold an open palm to highlight a particular day.</li>
-          </ol>
-          <div id="liveView" class="videoView">
-            <div class="video-stage">
-              <video id="webcam" autoplay playsinline></video>
-              <canvas class="output_canvas" id="output_canvas" width="1280" height="720"></canvas>
-            </div>
-            <div id="gesture_output" class="gesture-insights" aria-live="polite" hidden></div>
           </div>
         </section>
       </div>
