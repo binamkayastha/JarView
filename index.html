@@ -24,11 +24,33 @@ limitations under the License. -->
   <script src="https://unpkg.com/material-components-web@latest/dist/material-components-web.min.js"></script>
 </head>
 
-<body>
+<body class="intro-active">
+  <div class="jar-intro" aria-hidden="true">
+    <div class="jar-intro__scrim">
+      <div class="jar-intro__stars"></div>
+      <div class="jar-intro__jar" role="presentation">
+        <div class="jar-intro__glass">
+          <div class="jar-intro__swirl"></div>
+          <div class="jar-intro__photos">
+            <span class="jar-photo" style="--stagger:0ms;--origin-x:-12%;--origin-rot:-4deg;--spread-x:-60%;--end-rot:-26deg;"></span>
+            <span class="jar-photo" style="--stagger:80ms;--origin-x:6%;--origin-rot:3deg;--spread-x:45%;--end-rot:18deg;"></span>
+            <span class="jar-photo" style="--stagger:140ms;--origin-x:-6%;--origin-rot:-2deg;--spread-x:-30%;--end-rot:-10deg;"></span>
+            <span class="jar-photo" style="--stagger:220ms;--origin-x:18%;--origin-rot:7deg;--spread-x:70%;--end-rot:28deg;"></span>
+            <span class="jar-photo" style="--stagger:300ms;--origin-x:-20%;--origin-rot:-8deg;--spread-x:-75%;--end-rot:-32deg;"></span>
+            <span class="jar-photo" style="--stagger:360ms;--origin-x:0%;--origin-rot:2deg;--spread-x:25%;--end-rot:12deg;"></span>
+          </div>
+        </div>
+        <div class="jar-intro__lid">
+          <span class="jar-intro__hinge"></span>
+        </div>
+      </div>
+    </div>
+  </div>
   <div class="app-shell">
     <header class="hero">
       <h1 class="hero__title">JarView</h1>
       <p class="hero__lead">Photos at the tip of your fingers.</p>
+      <p class="hero__slogan">It's a jar of memories.</p>
       <p class="hero__body">Blend your Apple Photos timeline with live hand gestures. Grant camera and folder access once, then guide the storyboard with pinches and swipes.</p>
     </header>
 

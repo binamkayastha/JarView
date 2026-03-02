@@ -1788,3 +1788,76 @@ async function predictWebcam() {
     window.requestAnimationFrame(predictWebcam);
   }
 }
+
+// Intro animation controls
+const introState = {
+  overlay: document.querySelector(".jar-intro"),
+  body: document.body,
+  reducedMotion: window.matchMedia("(prefers-reduced-motion: reduce)"),
+  timers: [],
+};
+
+const INTRO_TIMING = {
+  open: 1200,
+  finish: 3600,
+};
+
+const clearIntroTimers = () => {
+  introState.timers.forEach((id) => window.clearTimeout(id));
+  introState.timers = [];
+};
+
+const finishIntro = ({ immediate = false } = {}) => {
+  clearIntroTimers();
+  introState.body.classList.remove("intro-active", "intro-open", "intro-playing");
+  introState.body.classList.add("intro-complete");
+  if (!introState.overlay) return;
+  if (immediate) {
+    introState.overlay.remove();
+    return;
+  }
+  introState.overlay.addEventListener(
+    "transitionend",
+    () => introState.overlay?.remove(),
+    { once: true },
+  );
+};
+
+const startIntro = () => {
+  if (!introState.overlay) {
+    introState.body.classList.remove("intro-active");
+    return;
+  }
+  if (introState.reducedMotion.matches || document.visibilityState === "hidden") {
+    finishIntro({ immediate: true });
+    return;
+  }
+  introState.body.classList.add("intro-playing");
+  introState.timers.push(
+    window.setTimeout(() => introState.body.classList.add("intro-open"), INTRO_TIMING.open),
+  );
+  introState.timers.push(
+    window.setTimeout(() => finishIntro(), INTRO_TIMING.finish),
+  );
+  introState.overlay.addEventListener("click", () => finishIntro(), { once: true });
+};
+
+const initIntroOverlay = () => {
+  if (!introState.overlay) {
+    introState.body.classList.remove("intro-active");
+    return;
+  }
+  startIntro();
+};
+
+if (document.readyState === "loading") {
+  window.addEventListener("DOMContentLoaded", initIntroOverlay, { once: true });
+} else {
+  initIntroOverlay();
+}
+
+introState.reducedMotion.addEventListener("change", (event) => {
+  if (event.matches) {
+    finishIntro({ immediate: true });
+  }
+});

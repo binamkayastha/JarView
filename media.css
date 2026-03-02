@@ -24,6 +24,16 @@ limitations under the License. */
   --text-contrast: #0f172a;
   --accent: #ffd60a;
   --accent-error: #ff6b6b;
+  --jar-overlay-dark: #010811;
+  --jar-overlay-mid: #051224;
+  --jar-glass-fill: linear-gradient(
+    180deg,
+    rgba(5, 47, 79, 0.95) 0%,
+    rgba(2, 8, 15, 0.98) 75%,
+    rgba(0, 0, 0, 0.85) 100%
+  );
+  --lid-gold-light: #ffe66d;
+  --lid-gold-dark: #f5c15b;
 }
 
 body {
@@ -37,6 +47,10 @@ body {
   overflow-x: hidden;
   --mdc-theme-primary: #00a1c7;
   --mdc-theme-on-primary: #f1f3f4;
+}
+
+body.intro-active {
+  overflow: hidden;
 }
 
 body::before {
@@ -80,6 +94,18 @@ p {
   border: 1px solid rgba(255, 255, 255, 0.08);
   box-shadow: 0 45px 120px rgba(0, 0, 0, 0.6);
   backdrop-filter: blur(20px);
+  transition: filter 800ms ease, transform 800ms ease;
+}
+
+body.intro-active .app-shell {
+  filter: blur(14px);
+  transform: scale(0.98);
+  pointer-events: none;
+}
+
+body.intro-complete .app-shell {
+  filter: none;
+  transform: none;
 }
 
 video {
@@ -198,6 +224,14 @@ section {
   letter-spacing: -0.03em;
 }
 
+.hero__slogan {
+  margin: 0 0 1rem;
+  font-size: 0.95rem;
+  text-transform: uppercase;
+  letter-spacing: 0.4em;
+  color: rgba(255, 255, 255, 0.65);
+}
+
 .hero__lead {
   margin: 0 0 0.9rem;
   font-size: 1.25rem;
@@ -306,6 +340,251 @@ section {
 
 .permission-success__icon {
   font-size: 1rem;
+}
+
+/* Intro overlay */
+.jar-intro {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(
+    circle at 50% 35%,
+    rgba(5, 12, 21, 0.92),
+    rgba(2, 8, 16, 0.98) 70%,
+    rgba(0, 0, 0, 0.95)
+  );
+  transition: opacity 800ms ease;
+}
+
+body.intro-complete .jar-intro,
+body:not(.intro-active) .jar-intro {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.jar-intro__scrim {
+  position: relative;
+  width: min(620px, 90vw);
+  height: min(620px, 90vh);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: visible;
+}
+
+.jar-intro__stars {
+  position: absolute;
+  inset: -30%;
+  background-image: radial-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 1px),
+    radial-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+  background-size: 220px 220px, 140px 140px;
+  opacity: 0.25;
+  animation: jarIntroStars 12s linear infinite;
+}
+
+.jar-intro__jar {
+  position: relative;
+  width: min(360px, 65vw);
+  aspect-ratio: 3 / 5;
+  filter: drop-shadow(0 40px 70px rgba(0, 0, 0, 0.55));
+  transform-origin: center bottom;
+}
+
+body.intro-active .jar-intro__jar {
+  animation: jarTilt 2400ms cubic-bezier(0.26, 0.73, 0.19, 0.99) forwards;
+}
+
+.jar-intro__glass {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border-radius: 150px 150px 90px 90px;
+  background: var(--jar-glass-fill);
+  border: 3px solid rgba(255, 255, 255, 0.08);
+  clip-path: inset(6% 7% 8% 7%);
+  overflow: hidden;
+}
+
+body.intro-open .jar-intro__glass {
+  overflow: visible;
+}
+
+.jar-intro__glass::after {
+  content: "";
+  position: absolute;
+  inset: 8% 16% auto;
+  height: 35%;
+  border-radius: 999px;
+  background: linear-gradient(120deg, rgba(255, 255, 255, 0.28), transparent 70%);
+  opacity: 0.7;
+}
+
+.jar-intro__swirl {
+  position: absolute;
+  inset: 15% 20% 20%;
+  background: conic-gradient(
+    from 180deg,
+    rgba(12, 128, 196, 0.35),
+    rgba(255, 214, 10, 0.25),
+    transparent 70%
+  );
+  filter: blur(35px);
+  animation: swirlPulse 6s ease-in-out infinite;
+}
+
+.jar-intro__photos {
+  position: absolute;
+  inset: 16% 18% 20%;
+  clip-path: inset(0 round 90px);
+  transition: clip-path 400ms ease;
+  z-index: 3;
+}
+
+body.intro-open .jar-intro__photos {
+  clip-path: inset(-20% -20% -20% -20%);
+}
+
+.jar-photo {
+  position: absolute;
+  left: 50%;
+  bottom: 18%;
+  width: clamp(70px, 14vw, 110px);
+  aspect-ratio: 3 / 4;
+  border-radius: 16px;
+  background: linear-gradient(#fff, #efefef);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.45);
+  transform-origin: center bottom;
+  transform: translate(-50%, 0) translateX(var(--origin-x)) rotate(var(--origin-rot)) scale(0.96);
+}
+
+.jar-photo::after {
+  content: "";
+  position: absolute;
+  inset: 16% 14% 22%;
+  border-radius: 12px;
+  background: linear-gradient(145deg, rgba(96, 185, 255, 0.8), rgba(255, 233, 198, 0.9));
+  box-shadow: inset 0 0 25px rgba(0, 0, 0, 0.15);
+}
+
+.jar-photo:nth-child(odd)::after {
+  background: linear-gradient(145deg, rgba(255, 214, 10, 0.45), rgba(255, 109, 192, 0.65));
+}
+
+.jar-intro__lid {
+  position: absolute;
+  top: -10%;
+  left: 50%;
+  width: 80%;
+  height: 14%;
+  transform: translateX(-50%);
+  border-radius: 999px;
+  background: linear-gradient(120deg, var(--lid-gold-light), var(--lid-gold-dark));
+  box-shadow: inset 0 6px 12px rgba(255, 255, 255, 0.45),
+    inset 0 -6px 16px rgba(196, 124, 0, 0.45),
+    0 20px 40px rgba(0, 0, 0, 0.35);
+  transform-origin: 80% 50%;
+}
+
+.jar-intro__lid::before {
+  content: "";
+  position: absolute;
+  inset: 25% 15%;
+  border-radius: 12px;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.65), transparent);
+  opacity: 0.6;
+}
+
+.jar-intro__hinge {
+  position: absolute;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.3);
+  right: 12%;
+  top: 50%;
+  transform: translateY(-50%);
+  box-shadow: inset 0 0 12px rgba(0, 0, 0, 0.4);
+}
+
+body.intro-active .jar-intro__lid {
+  animation: lidTwist 1800ms cubic-bezier(0.42, 0, 0.28, 1) forwards;
+  animation-delay: 550ms;
+}
+
+body.intro-open .jar-photo {
+  animation: photoLaunch 900ms cubic-bezier(0.12, 0.55, 0.17, 0.99) forwards;
+  animation-delay: calc(1.2s + var(--stagger));
+}
+
+@keyframes jarIntroStars {
+  0% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(3%);
+  }
+  100% {
+    transform: translateY(0);
+  }
+}
+
+@keyframes jarTilt {
+  0% {
+    transform: rotate(0deg) scale(1);
+  }
+  40% {
+    transform: rotate(-3deg) scale(1.01);
+  }
+  100% {
+    transform: rotate(-4deg);
+  }
+}
+
+@keyframes lidTwist {
+  0% {
+    transform: translateX(-50%) rotate(0deg);
+    opacity: 1;
+  }
+  35% {
+    transform: translateX(-56%) translateY(-4%) rotate(-8deg);
+  }
+  60% {
+    transform: translateX(-72%) translateY(-18%) rotate(-18deg);
+  }
+  100% {
+    transform: translateX(-95%) translateY(-48%) rotate(-32deg);
+    opacity: 0;
+  }
+}
+
+@keyframes photoLaunch {
+  0% {
+    opacity: 0.95;
+    transform: translate(-50%, 0) translateX(var(--origin-x)) rotate(var(--origin-rot)) scale(0.96);
+  }
+  65% {
+    opacity: 1;
+    transform: translate(-50%, -150%) translateX(var(--spread-x)) rotate(var(--end-rot));
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -240%) translateX(var(--spread-x)) rotate(var(--end-rot)) scale(1.05);
+  }
+}
+
+@keyframes swirlPulse {
+  0%,
+  100% {
+    transform: rotate(0deg) scale(1);
+    opacity: 0.55;
+  }
+  50% {
+    transform: rotate(12deg) scale(1.05);
+    opacity: 0.75;
+  }
 }
 
 .canvas-gesture-grid {
@@ -725,4 +1004,19 @@ section {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35),
     0 0 10px rgba(0, 245, 212, 0.6);
   cursor: pointer;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .jar-intro {
+    display: none !important;
+  }
+
+  body {
+    overflow: auto;
+  }
+
+  .app-shell {
+    filter: none !important;
+    transform: none !important;
+  }
 }
