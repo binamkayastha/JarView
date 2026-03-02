@@ -1,4 +1,4 @@
-# Jarview
+# JarView
 
 Jarview is a 3d photo organization visualization tool that helps you find and organize tasks.
 
