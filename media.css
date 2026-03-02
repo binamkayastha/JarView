@@ -37,11 +37,22 @@ limitations under the License. */
 }
 
 body {
-  font-family: roboto, "Inter", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family:
+    roboto,
+    "Inter",
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    sans-serif;
   margin: 0;
   padding: 2em;
   color: var(--text-primary);
-  background: radial-gradient(circle at top, #0d1b2a 0%, #000814 50%, #020b16 100%);
+  background: radial-gradient(
+    circle at top,
+    #0d1b2a 0%,
+    #000814 50%,
+    #020b16 100%
+  );
   min-height: 100vh;
   position: relative;
   overflow-x: hidden;
@@ -57,10 +68,15 @@ body::before {
   content: "";
   position: fixed;
   inset: 0;
-  background-image: radial-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 1px),
+  background-image:
+    radial-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 1px),
     radial-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px);
-  background-size: 120px 120px, 80px 80px;
-  background-position: 0 0, 40px 40px;
+  background-size:
+    120px 120px,
+    80px 80px;
+  background-position:
+    0 0,
+    40px 40px;
   opacity: 0.35;
   pointer-events: none;
   z-index: -1;
@@ -94,7 +110,9 @@ p {
   border: 1px solid rgba(255, 255, 255, 0.08);
   box-shadow: 0 45px 120px rgba(0, 0, 0, 0.6);
   backdrop-filter: blur(20px);
-  transition: filter 800ms ease, transform 800ms ease;
+  transition:
+    filter 800ms ease,
+    transform 800ms ease;
 }
 
 body.intro-active .app-shell {
@@ -378,9 +396,12 @@ body:not(.intro-active) .jar-intro {
 .jar-intro__stars {
   position: absolute;
   inset: -30%;
-  background-image: radial-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 1px),
+  background-image:
+    radial-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 1px),
     radial-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px);
-  background-size: 220px 220px, 140px 140px;
+  background-size:
+    220px 220px,
+    140px 140px;
   opacity: 0.25;
   animation: jarIntroStars 12s linear infinite;
 }
@@ -418,7 +439,11 @@ body.intro-open .jar-intro__glass {
   inset: 8% 16% auto;
   height: 35%;
   border-radius: 999px;
-  background: linear-gradient(120deg, rgba(255, 255, 255, 0.28), transparent 70%);
+  background: linear-gradient(
+    120deg,
+    rgba(255, 255, 255, 0.28),
+    transparent 70%
+  );
   opacity: 0.7;
 }
 
@@ -457,7 +482,8 @@ body.intro-open .jar-intro__photos {
   background: linear-gradient(#fff, #efefef);
   box-shadow: 0 18px 50px rgba(0, 0, 0, 0.45);
   transform-origin: center bottom;
-  transform: translate(-50%, 0) translateX(var(--origin-x)) rotate(var(--origin-rot)) scale(0.96);
+  transform: translate(-50%, 0) translateX(var(--origin-x))
+    rotate(var(--origin-rot)) scale(0.96);
 }
 
 .jar-photo::after {
@@ -465,12 +491,20 @@ body.intro-open .jar-intro__photos {
   position: absolute;
   inset: 16% 14% 22%;
   border-radius: 12px;
-  background: linear-gradient(145deg, rgba(96, 185, 255, 0.8), rgba(255, 233, 198, 0.9));
+  background: linear-gradient(
+    145deg,
+    rgba(96, 185, 255, 0.8),
+    rgba(255, 233, 198, 0.9)
+  );
   box-shadow: inset 0 0 25px rgba(0, 0, 0, 0.15);
 }
 
 .jar-photo:nth-child(odd)::after {
-  background: linear-gradient(145deg, rgba(255, 214, 10, 0.45), rgba(255, 109, 192, 0.65));
+  background: linear-gradient(
+    145deg,
+    rgba(255, 214, 10, 0.45),
+    rgba(255, 109, 192, 0.65)
+  );
 }
 
 .jar-intro__lid {
@@ -481,8 +515,13 @@ body.intro-open .jar-intro__photos {
   height: 14%;
   transform: translateX(-50%);
   border-radius: 999px;
-  background: linear-gradient(120deg, var(--lid-gold-light), var(--lid-gold-dark));
-  box-shadow: inset 0 6px 12px rgba(255, 255, 255, 0.45),
+  background: linear-gradient(
+    120deg,
+    var(--lid-gold-light),
+    var(--lid-gold-dark)
+  );
+  box-shadow:
+    inset 0 6px 12px rgba(255, 255, 255, 0.45),
     inset 0 -6px 16px rgba(196, 124, 0, 0.45),
     0 20px 40px rgba(0, 0, 0, 0.35);
   transform-origin: 80% 50%;
@@ -563,15 +602,18 @@ body.intro-open .jar-photo {
 @keyframes photoLaunch {
   0% {
     opacity: 0.95;
-    transform: translate(-50%, 0) translateX(var(--origin-x)) rotate(var(--origin-rot)) scale(0.96);
+    transform: translate(-50%, 0) translateX(var(--origin-x))
+      rotate(var(--origin-rot)) scale(0.96);
   }
   65% {
     opacity: 1;
-    transform: translate(-50%, -150%) translateX(var(--spread-x)) rotate(var(--end-rot));
+    transform: translate(-50%, -150%) translateX(var(--spread-x))
+      rotate(var(--end-rot));
   }
   100% {
     opacity: 0;
-    transform: translate(-50%, -240%) translateX(var(--spread-x)) rotate(var(--end-rot)) scale(1.05);
+    transform: translate(-50%, -240%) translateX(var(--spread-x))
+      rotate(var(--end-rot)) scale(1.05);
   }
 }
 
@@ -790,7 +832,11 @@ body.intro-open .jar-photo {
   border-radius: 16px;
   padding: 0.85rem 1rem;
   border: 1px solid rgba(10, 132, 255, 0.5);
-  background: linear-gradient(90deg, rgba(10, 132, 255, 0.3), rgba(52, 199, 89, 0.3));
+  background: linear-gradient(
+    90deg,
+    rgba(10, 132, 255, 0.3),
+    rgba(52, 199, 89, 0.3)
+  );
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -877,7 +923,6 @@ body.intro-open .jar-photo {
   color: var(--accent-error);
 }
 
-
 .experience-layout {
   display: grid;
   grid-template-columns: minmax(280px, 360px) minmax(0, 2.5fr);
@@ -916,7 +961,9 @@ body.intro-open .jar-photo {
   padding: 0.75rem 1.5rem;
   border-radius: 999px;
   cursor: pointer;
-  transition: background 150ms ease, color 150ms ease;
+  transition:
+    background 150ms ease,
+    color 150ms ease;
   text-transform: uppercase;
   letter-spacing: 0.08em;
 }
@@ -981,11 +1028,9 @@ body.intro-open .jar-photo {
 }
 
 .map-controls {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  display: flex;
   gap: 1rem;
   width: 100%;
-  max-width: 640px;
 }
 
 .map-control--pan-y {
@@ -1011,9 +1056,6 @@ body.intro-open .jar-photo {
 
 .map-control--zoom {
   grid-column: 1 / -1;
-  margin-top: 0.5rem;
-  padding-top: 1.25rem;
-  border-top: 1px solid rgba(255, 255, 255, 0.15);
 }
 
 .map-status {
@@ -1147,7 +1189,8 @@ body.intro-open .jar-photo {
   border-radius: 50%;
   background: #fff;
   border: 2px solid #0d1b2a;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35),
+  box-shadow:
+    0 4px 12px rgba(0, 0, 0, 0.35),
     0 0 10px rgba(0, 245, 212, 0.6);
   cursor: pointer;
 }
@@ -1159,7 +1202,8 @@ body.intro-open .jar-photo {
   border-radius: 50%;
   border: 2px solid #0d1b2a;
   background: #fff;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35),
+  box-shadow:
+    0 4px 12px rgba(0, 0, 0, 0.35),
     0 0 10px rgba(0, 245, 212, 0.6);
   cursor: pointer;
 }
