@@ -90,7 +90,8 @@ let timelineAnimationFrame = null;
 let photoMapInstance = null;
 let mapPinsLayer = null;
 let geoTaggedPhotos = [];
-const MAP_DEFAULT_CENTER = { lat: 39.5, lng: -98.35 };
+// Default to roughly the geographic center of Massachusetts (near Worcester)
+const MAP_DEFAULT_CENTER = { lat: 42.2664, lng: -71.8023 };
 const INITIAL_MAP_ZOOM = Number(mapZoomSlider?.value);
 const MAP_DEFAULT_ZOOM = Number.isFinite(INITIAL_MAP_ZOOM)
   ? INITIAL_MAP_ZOOM
